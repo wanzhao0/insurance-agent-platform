@@ -2,6 +2,7 @@ from collections.abc import AsyncIterator
 from dataclasses import dataclass
 
 from app.application.agent.registry import ToolRegistry
+from app.application.agent.orchestrator import AgentOrchestrator
 from app.application.knowledge.service import KnowledgeBaseService
 from app.application.rag.service import RagService
 from app.core.config import Settings
@@ -12,6 +13,7 @@ from app.domain.ports import ModelClient
 
 SYSTEM_PROMPT = (
     "你是一个可配置的行业知识库客服 Agent。请优先依据提供的知识库上下文回答，"
+    "回答前必须调用 search_knowledge_base 获取当前租户知识库证据；"
     "不要编造保单条款、金额、承保结论或法律意见。无法确认时明确说明并建议转人工。"
 )
 
@@ -39,6 +41,7 @@ class ChatService:
         self.knowledge_base_service = knowledge_base_service
         self.rag_service = rag_service
         self.tool_registry = tool_registry
+        self.agent_orchestrator = AgentOrchestrator(lambda: self.model_client, tool_registry)
         self.logger = get_logger(__name__)
 
     async def startup(self) -> None:
@@ -68,28 +71,16 @@ class ChatService:
         )
 
     async def stream(self, context: ChatContext) -> AsyncIterator[StreamEvent]:
-        latest_user_message = next(
-            message.content for message in reversed(context.request.messages) if message.role == "user"
-        )
-        context.retrieved = await self.rag_service.search(
-            context.knowledge_base_id, latest_user_message, self.settings.rag_top_k
-        )
-        if context.retrieved:
-            citations = "\n\n".join(
-                f"[{index}] {result.title}\n{result.content}" for index, result in enumerate(context.retrieved, 1)
-            )
-            context.prompt_messages.insert(
-                1,
-                ChatMessage(role="system", content=f"知识库上下文（仅供参考）：\n{citations}"),
-            )
-        else:
-            context.prompt_messages.insert(1, ChatMessage(role="system", content="本次检索没有找到相关知识库内容。"))
-
+        state = await self.agent_orchestrator.run(context)
+        for call in state.tool_calls:
+            yield StreamEvent(event="tool_call", tool_name=call.name, tool_call_id=call.call_id)
         emitted = 0
-        async for token in self.model_client.stream(context.prompt_messages):
+        answer = state.answer
+        for index in range(0, len(answer), 12):
+            token = answer[index : index + 12]
             emitted += 1
             yield StreamEvent(event="token", content=token)
-        for result in context.retrieved:
+        for result in state.retrieved:
             yield StreamEvent(event="citation", citation=result)
         self.logger.info(
             "chat_completed",

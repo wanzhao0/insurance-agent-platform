@@ -1,0 +1,3 @@
+{"case_id":"claims-materials","tenant_id":"demo","knowledge_base_id":"insurance-general","query":"请告诉我理赔需要准备什么材料","expected_document_ids":["demo-claim"],"expected_phrases":["保单信息","身份证明"],"forbidden_phrases":["可以直接获赔"]}
+{"case_id":"cooling-off","tenant_id":"demo","knowledge_base_id":"insurance-general","query":"犹豫期怎么处理","expected_document_ids":["demo-cooling-off"],"expected_phrases":["犹豫期","保单条款"],"forbidden_phrases":[]}
+{"case_id":"unknown-recommendation","tenant_id":"demo","knowledge_base_id":"insurance-general","query":"有什么保险产品可以推荐的","expected_document_ids":[],"expected_phrases":["没有检索到"],"forbidden_phrases":["犹豫期","保单信息"],"expect_no_context":true}

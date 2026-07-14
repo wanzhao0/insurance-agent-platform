@@ -24,7 +24,9 @@ async def add_document(knowledge_base_id: str, payload: DocumentCreate, request:
     container = request.app.state.container
     if container.knowledge_base_service.get(knowledge_base_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="knowledge base not found")
-    return container.knowledge_base_service.add_document(knowledge_base_id, payload)
+    document = container.knowledge_base_service.add_document(knowledge_base_id, payload)
+    await container.rag_service.index_document(document)
+    return document
 
 
 @router.post("/{knowledge_base_id}/search", response_model=SearchResponse)

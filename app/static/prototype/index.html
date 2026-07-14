@@ -197,7 +197,7 @@
           <button class="nav-item" data-view="tenants"><span class="nav-symbol">◎</span><span>租户配置</span></button>
           <button class="nav-item" data-view="runtime"><span class="nav-symbol">⚙</span><span>模型与工具</span></button>
         </nav>
-        <div class="sidebar-footer"><strong>平台状态 · 正常</strong>Mock model / In-memory adapters<br />Prototype v0.1</div>
+        <div class="sidebar-footer"><strong>平台状态 · 正常</strong>模型、Embedding 与向量检索已接入<br />Prototype v0.1</div>
       </aside>
       <section class="main-shell">
         <header class="topbar">
@@ -217,6 +217,7 @@
         selectedKb: 'insurance-general',
         selectedTenant: 'demo',
         kbFilter: 'all',
+        tools: [{ name: 'search_knowledge_base' }],
         documents: [
           { id: 'demo-claim', title: '理赔材料提交', kb: 'insurance-general', category: '理赔服务', status: '已索引', updated: '今天 09:42', version: 1, content: '申请理赔通常需要提供保单信息、被保险人身份证明、事故证明和与损失相关的材料。不同产品和事故类型的要求可能不同，请以保单约定和客服审核结果为准。' },
           { id: 'demo-cooling-off', title: '犹豫期说明', kb: 'insurance-general', category: '产品条款', status: '已索引', updated: '昨天 16:18', version: 1, content: '长期人身保险产品可能设置犹豫期。犹豫期的具体天数、退保规则和费用处理以产品条款及投保单约定为准。' },
@@ -234,7 +235,7 @@
           { id: 'partner-a', name: '安顺渠道合作方', plan: '合作版', defaultKb: 'partner-claims', kbs: 1, status: '正常', updated: '07-09 18:03' },
           { id: 'sandbox', name: '产品测试租户', plan: '沙箱', defaultKb: 'health-products', kbs: 2, status: '受限', updated: '07-08 10:11' }
         ],
-        runtime: { provider: 'mock', model: 'insurance-agent-demo', baseUrl: 'https://api.openai.com/v1', timeout: 60, topK: 4, rate: 60, apiKeyConfigured: false },
+        runtime: { provider: 'mock', model: 'insurance-agent-demo', baseUrl: 'https://api.openai.com/v1', timeout: 60, topK: 4, rate: 60, apiKeyConfigured: false, embedding: 'hash', vectorStore: 'qdrant-local', toolCount: 1 },
         chatMessages: [
           { role: 'assistant', text: '您好，我可以根据当前知识库协助查询保险服务信息。请描述您的问题。', time: '09:42' },
           { role: 'user', text: '理赔需要准备什么材料？', time: '09:43' },
@@ -269,14 +270,15 @@
       const mapDocument = (item) => ({ id: item.document_id, title: item.title, kb: item.knowledge_base_id, category: item.metadata?.category || '未分类', status: '已索引', updated: formatUpdated(item.created_at), version: item.version, content: item.content });
       const mapTenant = (item) => ({ id: item.tenant_id, name: item.name, plan: item.plan, defaultKb: item.default_knowledge_base_id, kbs: item.knowledge_base_count, status: item.enabled ? '正常' : '停用', updated: '服务端' });
       async function hydrateState() {
-        const [overview, knowledgeBases, documents, tenants, runtime] = await Promise.all([
-          api('/api/v1/admin/overview'), api('/api/v1/admin/knowledge-bases'), api('/api/v1/admin/documents'), api('/api/v1/admin/tenants'), api('/api/v1/admin/runtime')
+        const [overview, knowledgeBases, documents, tenants, runtime, tools] = await Promise.all([
+          api('/api/v1/admin/overview'), api('/api/v1/admin/knowledge-bases'), api('/api/v1/admin/documents'), api('/api/v1/admin/tenants'), api('/api/v1/admin/runtime'), api('/api/v1/tools')
         ]);
         state.overview = { tenantCount: overview.tenant_count, knowledgeBaseCount: overview.knowledge_base_count, documentCount: overview.document_count, enabledKnowledgeBaseCount: overview.enabled_knowledge_base_count };
         state.kbs = knowledgeBases.map(mapKnowledgeBase);
         state.documents = documents.map(mapDocument);
         state.tenants = tenants.map(mapTenant);
-        state.runtime = { provider: runtime.model_provider, model: runtime.model_name, baseUrl: runtime.model_base_url, timeout: runtime.request_timeout_seconds, topK: runtime.rag_top_k, rate: runtime.rate_limit_requests, apiKeyConfigured: runtime.model_api_key_configured };
+        state.tools = tools;
+        state.runtime = { provider: runtime.model_provider, model: runtime.model_name, baseUrl: runtime.model_base_url, timeout: runtime.request_timeout_seconds, topK: runtime.rag_top_k, rate: runtime.rate_limit_requests, apiKeyConfigured: runtime.model_api_key_configured, embedding: runtime.embedding_provider, vectorStore: runtime.vector_store_provider, toolCount: state.tools?.length || 1 };
         state.hydrated = true;
         if (!kbById(state.selectedKb)) state.selectedKb = state.kbs[0]?.id || 'insurance-general';
         renderApp();
@@ -296,7 +298,7 @@
           </div>
           <div class="content-grid">
             <section class="panel"><div class="panel-head"><h2 class="panel-title">近 7 日 Agent 请求</h2><span class="panel-note">成功率 98.7%</span></div><div class="panel-body"><div class="activity-bars">${[42, 57, 51, 75, 64, 88, 70].map((height, index) => `<div class="activity-bar"><i style="height:${height}%"></i><span>${['07/08', '07/09', '07/10', '07/11', '07/12', '07/13', '今天'][index]}</span></div>`).join('')}</div></div></section>
-            <section class="panel"><div class="panel-head"><h2 class="panel-title">快捷操作</h2><span class="panel-note">常用管理入口</span></div><div class="panel-body"><div class="quick-list"><button class="quick-action" data-action="new-doc"><span>上传知识文档</span><span>→</span></button><button class="quick-action" data-action="new-kb"><span>创建知识库</span><span>→</span></button><button class="quick-action" data-view="runtime"><span>检查模型配置</span><span>→</span></button><button class="quick-action" data-view="chat"><span>打开客服工作台</span><span>→</span></button></div></div></section>
+            <section class="panel"><div class="panel-head"><h2 class="panel-title">快捷操作</h2><span class="panel-note">常用管理入口</span></div><div class="panel-body"><div class="quick-list"><button class="quick-action" data-action="new-doc"><span>上传知识文档</span><span>→</span></button><button class="quick-action" data-action="new-kb"><span>创建知识库</span><span>→</span></button><button class="quick-action" data-action="run-evaluation"><span>运行质量评测</span><span>→</span></button><button class="quick-action" data-view="runtime"><span>检查模型配置</span><span>→</span></button><button class="quick-action" data-view="chat"><span>打开客服工作台</span><span>→</span></button></div></div></section>
           </div>
           <section class="panel table-panel"><div class="panel-head"><h2 class="panel-title">最近活动</h2><button class="button ghost" data-view="documents">查看全部 →</button></div><div class="table-wrap"><table><thead><tr><th>活动</th><th>对象</th><th>操作者</th><th>时间</th><th>状态</th></tr></thead><tbody><tr><td><div class="cell-title">文档索引完成</div><div class="cell-sub">内容已进入检索范围</div></td><td>理赔材料提交</td><td>系统任务</td><td>今天 09:42</td><td><span class="status green">已完成</span></td></tr><tr><td><div class="cell-title">知识库版本发布</div><div class="cell-sub">默认版本切换</div></td><td>保险通用知识库 v1</td><td>张昭</td><td>昨天 16:18</td><td><span class="status green">已发布</span></td></tr><tr><td><div class="cell-title">模型连接检查</div><div class="cell-sub">mock provider</div></td><td>insurance-agent-demo</td><td>系统任务</td><td>昨天 15:06</td><td><span class="status gold">演示模式</span></td></tr></tbody></table></div></section>`;
       }
@@ -329,8 +331,8 @@
       }
 
       function renderRuntime() {
-        return `${pageHead('模型与工具', '配置 Agent 的运行策略、模型连接和工具能力', '<button class="button" data-action="reset-runtime">恢复默认</button><button class="button primary" data-action="save-runtime">保存配置</button>')}
-          <div class="content-grid equal"><section class="panel"><div class="panel-head"><h2 class="panel-title">模型连接</h2><span class="status ${state.runtime.apiKeyConfigured ? 'green' : 'gold'}">${state.runtime.apiKeyConfigured ? '服务端密钥已配置' : '未配置服务端密钥'}</span></div><div class="panel-body"><form data-form="runtime"><div class="form-grid"><div class="form-field"><label for="runtime-provider">Provider</label><select id="runtime-provider" name="provider"><option value="mock" ${state.runtime.provider === 'mock' ? 'selected' : ''}>Mock / 演示模式</option><option value="openai-compatible" ${state.runtime.provider === 'openai-compatible' ? 'selected' : ''}>OpenAI Compatible</option></select></div><div class="form-field"><label for="runtime-model">模型名称</label><input id="runtime-model" name="model" value="${esc(state.runtime.model)}" /></div><div class="form-field full"><label for="runtime-url">Base URL</label><input id="runtime-url" name="baseUrl" value="${esc(state.runtime.baseUrl)}" /></div><div class="form-field"><label for="runtime-timeout">请求超时（秒）</label><input id="runtime-timeout" name="timeout" type="number" min="5" max="300" value="${state.runtime.timeout}" /></div><div class="form-field"><label for="runtime-topk">检索 Top K</label><input id="runtime-topk" name="topK" type="number" min="1" max="20" value="${state.runtime.topK}" /></div></div><div class="form-help" style="margin-top:18px">API Key 不在此页面录入，生产环境通过服务端环境变量注入。保存后会生成新的配置版本。</div></form></div></section><section class="panel"><div class="panel-head"><h2 class="panel-title">Agent 工具</h2><span class="panel-note">2 个工具已注册</span></div><div class="panel-body"><div class="tool-row"><div><div class="tool-name">search_knowledge_base</div><div class="tool-description">在租户范围内检索知识库内容，为回答提供引用。</div></div><button class="toggle on" aria-label="启用知识库检索"></button></div><div class="tool-row"><div><div class="tool-name">handoff_to_human</div><div class="tool-description">当问题超出知识库范围时创建人工服务任务。</div></div><button class="toggle on" aria-label="启用人工转接"></button></div><div class="tool-row"><div><div class="tool-name">policy_lookup</div><div class="tool-description">查询产品条款状态，等待接入业务插件。</div></div><button class="toggle" aria-label="启用条款查询"></button></div></div></section></div>`;
+        return `${pageHead('模型与工具', '配置 Agent 的运行策略、模型连接和工具能力', '<button class="button" data-action="run-evaluation">运行质量评测</button><button class="button" data-action="reset-runtime">恢复默认</button><button class="button primary" data-action="save-runtime">保存配置</button>')}
+          <div class="content-grid equal"><section class="panel"><div class="panel-head"><h2 class="panel-title">模型连接</h2><span class="status ${state.runtime.apiKeyConfigured ? 'green' : 'gold'}">${state.runtime.apiKeyConfigured ? '服务端密钥已配置' : '未配置服务端密钥'}</span></div><div class="panel-body"><form data-form="runtime"><div class="form-grid"><div class="form-field"><label for="runtime-provider">Provider</label><select id="runtime-provider" name="provider"><option value="mock" ${state.runtime.provider === 'mock' ? 'selected' : ''}>Mock / 演示模式</option><option value="openai-compatible" ${state.runtime.provider === 'openai-compatible' ? 'selected' : ''}>OpenAI Compatible</option></select></div><div class="form-field"><label for="runtime-model">模型名称</label><input id="runtime-model" name="model" value="${esc(state.runtime.model)}" /></div><div class="form-field full"><label for="runtime-url">Base URL</label><input id="runtime-url" name="baseUrl" value="${esc(state.runtime.baseUrl)}" /></div><div class="form-field"><label for="runtime-timeout">请求超时（秒）</label><input id="runtime-timeout" name="timeout" type="number" min="5" max="300" value="${state.runtime.timeout}" /></div><div class="form-field"><label for="runtime-topk">检索 Top K</label><input id="runtime-topk" name="topK" type="number" min="1" max="20" value="${state.runtime.topK}" /></div></div><div class="form-help" style="margin-top:18px">API Key 不在此页面录入，生产环境通过服务端环境变量注入。保存后会生成新的配置版本。</div><div class="detail-list" style="margin-top:18px"><div class="detail-item"><span class="detail-label">Embedding</span><span class="detail-value">${esc(state.runtime.embedding)}</span></div><div class="detail-item"><span class="detail-label">向量库</span><span class="detail-value">${esc(state.runtime.vectorStore)}</span></div></div></form></div></section><section class="panel"><div class="panel-head"><h2 class="panel-title">Agent 工具与工作流</h2><span class="panel-note">${state.runtime.toolCount} 个工具已注册</span></div><div class="panel-body"><div class="tool-row"><div><div class="tool-name">search_knowledge_base</div><div class="tool-description">模型触发租户范围内的向量检索，为回答提供引用。</div></div><button class="toggle on" aria-label="启用知识库检索"></button></div><div class="tool-row"><div><div class="tool-name">customer_service_workflow</div><div class="tool-description">知识检索 Agent → 安全审查 Agent → SSE 答复。</div></div><button class="toggle on" aria-label="启用客服工作流"></button></div><div class="tool-row"><div><div class="tool-name">quality_evaluation</div><div class="tool-description">评测检索命中、引用、答案依据和无知识安全拒答。</div></div><button class="toggle on" aria-label="启用质量评测"></button></div></div></section></div>`;
       }
 
       function renderApp() {
@@ -423,6 +425,7 @@
         if (action === 'refresh') { showToast('数据已刷新', 'success'); return; }
         if (action === 'new-doc') { openNewDocument(); return; }
         if (action === 'new-kb') { openNewKb(); return; }
+        if (action === 'run-evaluation') { try { const report = await api('/api/v1/admin/evaluations/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({}) }); showToast(`评测完成：${Math.round(report.overall_score * 100)} 分，${report.dataset_size} 个样本`, 'success'); } catch (error) { showToast(error.message, 'info'); } return; }
         if (action === 'new-tenant') { showToast('租户创建流程将在后续版本接入', 'info'); return; }
         if (action === 'open-doc') { openDocument(actionTarget.dataset.doc); return; }
         if (action === 'delete-doc') { const doc = state.documents.find((item) => item.id === actionTarget.dataset.doc); if (!doc) return; try { await api(`/api/v1/admin/documents/${encodeURIComponent(doc.kb)}/${encodeURIComponent(doc.id)}`, { method: 'DELETE' }); document.querySelector('#modal-root').innerHTML = ''; await hydrateState(); showToast('文档已删除', 'success'); } catch (error) { showToast(error.message, 'info'); } return; }

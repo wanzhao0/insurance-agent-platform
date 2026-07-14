@@ -1,11 +1,24 @@
 from collections.abc import AsyncIterator
 from typing import Any, Protocol
 
-from app.domain.models import ChatMessage, DocumentCreate, DocumentResponse, SearchResult, ToolDescriptor
+from app.domain.models import (
+    ChatMessage,
+    DocumentCreate,
+    DocumentResponse,
+    ModelCompletion,
+    SearchResult,
+    ToolDescriptor,
+)
 
 
 class ModelClient(Protocol):
-    async def complete(self, messages: list[ChatMessage], *, temperature: float = 0.2) -> str: ...
+    async def complete(
+        self,
+        messages: list[ChatMessage],
+        *,
+        temperature: float = 0.2,
+        tools: list[ToolDescriptor] | None = None,
+    ) -> ModelCompletion: ...
 
     async def stream(self, messages: list[ChatMessage], *, temperature: float = 0.2) -> AsyncIterator[str]: ...
 
@@ -23,9 +36,13 @@ class DocumentRepository(Protocol):
 
 
 class VectorStore(Protocol):
-    async def upsert(self, knowledge_base_id: str, document: DocumentResponse) -> None: ...
+    async def reset(self) -> None: ...
 
-    async def search(self, knowledge_base_id: str, query: str, top_k: int) -> list[SearchResult]: ...
+    async def upsert(self, knowledge_base_id: str, document: DocumentResponse, vector: list[float]) -> None: ...
+
+    async def search(self, knowledge_base_id: str, vector: list[float], top_k: int) -> list[SearchResult]: ...
+
+    async def delete(self, knowledge_base_id: str, document_id: str) -> None: ...
 
 
 class Tool(Protocol):

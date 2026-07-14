@@ -19,6 +19,8 @@ class PublicConfigResponse(BaseModel):
     rag_top_k: int
     request_timeout_seconds: float
     available_tools: list[str]
+    embedding_provider: str
+    vector_store_provider: str
 
 
 class TenantConfigResponse(BaseModel):
@@ -49,7 +51,24 @@ class TenantConfigUpdate(BaseModel):
 
 class ChatMessage(BaseModel):
     role: Literal["system", "user", "assistant", "tool"]
-    content: str = Field(min_length=1, max_length=20_000)
+    content: str | None = Field(default=None, max_length=20_000)
+    name: str | None = Field(default=None, max_length=100)
+    tool_call_id: str | None = Field(default=None, max_length=100)
+    tool_calls: list["ModelToolCall"] | None = None
+
+
+class ModelToolCall(BaseModel):
+    call_id: str
+    name: str
+    arguments: dict[str, Any] = Field(default_factory=dict)
+
+
+class ModelCompletion(BaseModel):
+    content: str | None = None
+    tool_calls: list[ModelToolCall] = Field(default_factory=list)
+
+
+ChatMessage.model_rebuild()
 
 
 class ChatRequest(BaseModel):
@@ -124,9 +143,11 @@ class SearchResponse(BaseModel):
 
 
 class StreamEvent(BaseModel):
-    event: Literal["token", "citation", "message"]
+    event: Literal["token", "citation", "tool_call", "message"]
     content: str | None = None
     citation: SearchResult | None = None
+    tool_name: str | None = None
+    tool_call_id: str | None = None
 
 
 class ToolDescriptor(BaseModel):
@@ -162,6 +183,9 @@ class RuntimeConfigResponse(BaseModel):
     rag_top_k: int
     rate_limit_requests: int
     rate_limit_window_seconds: int
+    embedding_provider: str
+    embedding_model: str
+    vector_store_provider: str
 
 
 class RuntimeConfigUpdate(BaseModel):
@@ -174,3 +198,42 @@ class RuntimeConfigUpdate(BaseModel):
     rag_top_k: int | None = Field(default=None, ge=1, le=20)
     rate_limit_requests: int | None = Field(default=None, ge=1, le=10000)
     rate_limit_window_seconds: int | None = Field(default=None, ge=1, le=86400)
+
+
+class EvaluationCase(BaseModel):
+    case_id: str
+    tenant_id: str = "demo"
+    knowledge_base_id: str | None = None
+    query: str = Field(min_length=1, max_length=2000)
+    expected_document_ids: list[str] = Field(default_factory=list)
+    expected_phrases: list[str] = Field(default_factory=list)
+    forbidden_phrases: list[str] = Field(default_factory=list)
+    expect_no_context: bool = False
+
+
+class EvaluationRunRequest(BaseModel):
+    cases: list[EvaluationCase] | None = None
+    judge: Literal["rules", "llm"] = "rules"
+
+
+class EvaluationCaseResult(BaseModel):
+    case_id: str
+    query: str
+    retrieved_document_ids: list[str]
+    answer: str
+    retrieval_hit: bool
+    citation_present: bool
+    grounded: bool
+    no_context_safe: bool
+    judge_score: float
+    judge_reason: str
+
+
+class EvaluationReport(BaseModel):
+    dataset_size: int
+    retrieval_hit_rate: float
+    citation_rate: float
+    grounded_answer_rate: float
+    no_context_precision: float
+    overall_score: float
+    cases: list[EvaluationCaseResult]

@@ -1,4 +1,7 @@
 import json
+import os
+
+os.environ.setdefault("AGENT_VECTOR_STORE_PROVIDER", "memory")
 
 from fastapi.testclient import TestClient
 
@@ -46,6 +49,7 @@ def test_rag_and_sse_chat() -> None:
         )
         assert response.status_code == 200
         assert "event: token" in response.text
+        assert "event: tool_call" in response.text
         assert "event: done" in response.text
         token_text = "".join(
             json.loads(line[5:])["content"]
@@ -111,6 +115,13 @@ def test_admin_data_and_markdown_upload() -> None:
         assert runtime.status_code == 200
         assert runtime.json()["model_name"] == "insurance-agent-demo-v2"
         assert runtime.json()["rag_top_k"] == 5
+
+        evaluation = client.post("/api/v1/admin/evaluations/run", json={})
+        assert evaluation.status_code == 200
+        report = evaluation.json()
+        assert report["dataset_size"] == 3
+        assert report["grounded_answer_rate"] == 1.0
+        assert report["no_context_precision"] == 1.0
 
 
 def test_unsupported_upload_format_is_rejected() -> None:

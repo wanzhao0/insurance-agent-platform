@@ -29,8 +29,17 @@ class Settings(BaseSettings):
     model_timeout_seconds: float = 45.0
     model_max_retries: int = 2
 
+    embedding_provider: str = "hash"
+    embedding_model: str = "insurance-agent-hash-v1"
+    embedding_base_url: str = "https://api.openai.com/v1"
+    embedding_api_key: SecretStr | None = None
+    embedding_dimension: int = 1024
+    vector_store_provider: str = "qdrant-local"
+    vector_db_path: str = "./data/qdrant"
+
     request_timeout_seconds: float = 60.0
     rag_top_k: int = 4
+    rag_min_score: float = 0.1
     rate_limit_requests: int = 60
     rate_limit_window_seconds: int = 60
     redis_url: str | None = None

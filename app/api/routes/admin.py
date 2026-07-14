@@ -7,6 +7,8 @@ from app.domain.models import (
     DocumentCreate,
     DocumentResponse,
     DocumentUploadResponse,
+    EvaluationReport,
+    EvaluationRunRequest,
     KnowledgeBaseCreate,
     KnowledgeBaseResponse,
     KnowledgeBaseUpdate,
@@ -19,6 +21,16 @@ from app.domain.models import (
 
 router = APIRouter(dependencies=[Depends(require_admin)])
 ingestion_service = DocumentIngestionService()
+
+
+@router.post("/evaluations/run", response_model=EvaluationReport)
+async def run_evaluation(payload: EvaluationRunRequest, request: Request) -> EvaluationReport:
+    service = request.app.state.container.evaluation_service
+    cases = payload.cases if payload.cases is not None else service.load_default_cases()
+    try:
+        return await service.run(cases, payload.judge)
+    except ValueError as exc:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
 
 @router.get("/overview", response_model=AdminOverviewResponse)
@@ -107,6 +119,7 @@ async def upload_document(
             metadata={**parsed.metadata, "category": category},
         ),
     )
+    await container.rag_service.index_document(document)
     return DocumentUploadResponse(
         **document.model_dump(),
         parser=parsed.metadata["parser"],
@@ -116,9 +129,11 @@ async def upload_document(
 
 @router.delete("/documents/{knowledge_base_id}/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(knowledge_base_id: str, document_id: str, request: Request) -> None:
-    deleted = request.app.state.container.knowledge_base_service.delete_document(knowledge_base_id, document_id)
+    container = request.app.state.container
+    deleted = container.knowledge_base_service.delete_document(knowledge_base_id, document_id)
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document not found")
+    await container.rag_service.delete_document(knowledge_base_id, document_id)
 
 
 @router.get("/runtime", response_model=RuntimeConfigResponse)

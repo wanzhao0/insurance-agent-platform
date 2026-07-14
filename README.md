@@ -40,13 +40,18 @@ AGENT_MODEL_API_KEY=<server-only-secret>
 - `POST /api/v1/knowledge-bases/{id}/search`：调用 RAG 检索接口。
 - `GET /api/v1/tools`：查看已注册 Agent 工具。
 - `POST /api/v1/chat/stream`：SSE 流式聊天。
+- `POST /api/v1/admin/evaluations/run`：运行默认或自定义评测集，返回 RAG、引用、答案依据和安全拒答指标。
+
+`AGENT_RAG_MIN_SCORE` 控制向量相似度的最低保留分数；默认本地 Hash Embedding 使用 `0.1`，切换真实 Embedding 后应通过评测集重新校准。
 - `GET /api/v1/admin/overview`：后管概览数据。
 - `GET/PATCH /api/v1/admin/runtime`：读取或更新运行时参数；API Key 只返回是否已配置。
 - `GET /api/v1/admin/tenants`、`PATCH /api/v1/admin/tenants/{tenant_id}`：读取或更新租户配置。
 - `GET /api/v1/admin/knowledge-bases`、`POST/PATCH /api/v1/admin/knowledge-bases/{id}`：管理知识库。
 - `GET /api/v1/admin/documents`、`POST /api/v1/admin/documents/upload`、`DELETE /api/v1/admin/documents/{knowledge_base_id}/{document_id}`：查看、上传和删除文档。
 
-SSE 事件包括 `start`、`token`、`citation`、`done` 和 `error`。聊天请求示例：
+SSE 事件包括 `start`、`tool_call`、`token`、`citation`、`done` 和 `error`。其中 `tool_call` 表示模型触发了已注册工具，服务端会强制注入当前租户的知识库范围。
+
+聊天请求示例：
 
 ```json
 {
@@ -67,8 +72,10 @@ HTTP API
 ```
 
 - `app/domain/ports.py` 定义可替换端口。
-- `app/application/` 负责租户范围、RAG 编排和聊天流程。
-- `app/infrastructure/` 提供默认适配器；生产环境可替换为 Redis、队列、Postgres、Milvus、pgvector 或其他实现。
+- `app/application/` 负责租户范围、RAG 编排、工作流和多智能体流程。
+- `KnowledgeRetrievalAgent` 通过模型工具调用 `search_knowledge_base`，`SafetyReviewAgent` 对无证据回答做安全兜底；代理顺序由 `Workflow` 编排，可继续增加路由、理赔、产品等业务代理。
+- Embedding 由 `EmbeddingClient` 抽象，默认是无需密钥的本地 Hash Embedding；可通过 `AGENT_EMBEDDING_PROVIDER=openai-compatible` 接入兼容 `/embeddings` 的服务。
+- 向量库默认是本地持久化 Qdrant，数据目录由 `AGENT_VECTOR_DB_PATH` 配置；也可设为 `memory` 使用进程内适配器。生产环境可替换为远程 Qdrant、Milvus、pgvector 或其他实现。
 - `InMemoryRateLimiter` 只适用于单进程开发。多实例部署时应替换为 Redis 实现。
 - `AGENT_TASK_QUEUE` 保留异步任务边界，当前基础版本使用 `inline`，文档入库、重建索引等耗时任务可接入队列。
 - `TaskQueue` 与 `InlineTaskQueue` 为队列替换点，生产环境可接入 Redis、Celery 或其他消息系统。
@@ -82,7 +89,29 @@ pytest
 ruff check app tests
 ```
 
-当前默认适配器是演示实现，知识库和文档存储为进程内内存，服务重启后会恢复示例数据并丢弃运行期写入的数据；这是后续接入持久化存储和向量库的替换点。
+当前默认的租户、知识库和文档元数据仍是进程内演示存储，服务重启后会恢复示例数据；生产环境应替换 `DocumentRepository` 为 Postgres 等持久化实现，并使用队列异步处理大文件解析和批量向量化。Qdrant 只负责向量索引持久化，不替代业务数据库。
+
+### Embedding、工具调用和评测
+
+```bash
+# 使用本地零密钥模式
+AGENT_EMBEDDING_PROVIDER=hash
+AGENT_VECTOR_STORE_PROVIDER=qdrant-local
+
+# 使用 OpenAI-compatible Embedding 服务（密钥只放后端环境变量）
+AGENT_EMBEDDING_PROVIDER=openai-compatible
+AGENT_EMBEDDING_BASE_URL=https://api.openai.com/v1
+AGENT_EMBEDDING_MODEL=<embedding-model>
+AGENT_EMBEDDING_API_KEY=<server-only-secret>
+```
+
+默认评测集位于 `evals/dataset.jsonl`，覆盖理赔材料、犹豫期和无依据推荐三个场景。运行：
+
+```bash
+curl -X POST http://127.0.0.1:8000/api/v1/admin/evaluations/run
+```
+
+也可以提交 `{"judge":"llm"}` 使用模型裁判；模型无法返回合法 JSON 时会自动回退到规则评测。评测报告包括 retrieval hit rate、citation rate、grounded answer rate、no-context precision 和 overall score。
 
 ### 文档上传
 

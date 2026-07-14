@@ -11,3 +11,4 @@ build/
 .DS_Store
 .playwright-cli/
 output/playwright/
+data/
