@@ -1,0 +1,59 @@
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import Response
+
+from app.api.router import api_router
+from app.bootstrap.container import build_container
+from app.core.config import get_settings
+from app.core.errors import register_exception_handlers
+from app.core.logging import configure_logging, get_logger
+from app.core.middleware import RequestContextMiddleware
+
+
+settings = get_settings()
+configure_logging(settings.log_level)
+logger = get_logger(__name__)
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    container = build_container(settings)
+    app.state.container = container
+    await container.startup()
+    logger.info(
+        "application_started",
+        extra={"environment": settings.environment, "model_provider": settings.model_provider},
+    )
+    yield
+    await container.shutdown()
+    logger.info("application_stopped")
+
+
+app = FastAPI(
+    title=settings.app_name,
+    version=settings.app_version,
+    description="A configurable customer service Agent platform with knowledge-base retrieval.",
+    lifespan=lifespan,
+)
+app.add_middleware(RequestContextMiddleware)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=settings.cors_origins,
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+register_exception_handlers(app)
+app.include_router(api_router, prefix=settings.api_prefix)
+
+
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon() -> Response:
+    return Response(status_code=204)
+
+static_dir = Path(__file__).parent / "static"
+app.mount("/", StaticFiles(directory=static_dir, html=True), name="frontend")

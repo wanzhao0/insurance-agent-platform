@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>保险知识库客服 Agent</title>
+    <style>
+      :root { font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f3f5f7; color: #17202a; }
+      * { box-sizing: border-box; }
+      body { margin: 0; min-height: 100vh; }
+      button, input, textarea { font: inherit; }
+      .shell { display: grid; grid-template-columns: 280px minmax(0, 1fr); min-height: 100vh; }
+      aside { background: #15212b; color: #eef4f7; padding: 28px 22px; }
+      .brand { display: flex; gap: 12px; align-items: center; margin-bottom: 34px; }
+      .mark { width: 34px; height: 34px; border-radius: 8px; display: grid; place-items: center; background: #f1b24a; color: #15212b; font-weight: 800; }
+      .brand h1 { font-size: 15px; margin: 0; }
+      .brand p { margin: 3px 0 0; color: #a9bbc5; font-size: 12px; }
+      label { display: block; color: #a9bbc5; font-size: 12px; margin: 20px 0 8px; }
+      select, .tenant { width: 100%; border: 1px solid #40525d; border-radius: 6px; padding: 10px; background: #21313c; color: #eef4f7; }
+      .status { display: flex; align-items: center; gap: 8px; margin-top: 28px; color: #b8cbd4; font-size: 12px; }
+      .dot { width: 8px; height: 8px; border-radius: 50%; background: #53c98b; }
+      main { display: flex; flex-direction: column; min-width: 0; }
+      header { display: flex; justify-content: space-between; align-items: center; padding: 26px 34px; border-bottom: 1px solid #dce2e6; background: #fff; }
+      header h2 { font-size: 20px; margin: 0; }
+      header span { color: #71808b; font-size: 13px; }
+      #messages { flex: 1; overflow: auto; padding: 32px max(20px, calc((100vw - 980px) / 2)); display: flex; flex-direction: column; gap: 18px; }
+      .message { max-width: min(720px, 88%); padding: 15px 17px; border-radius: 8px; line-height: 1.65; white-space: pre-wrap; }
+      .message.user { align-self: flex-end; background: #1f6173; color: #fff; }
+      .message.assistant { align-self: flex-start; background: #fff; border: 1px solid #dce2e6; }
+      .message small { display: block; margin-bottom: 6px; color: #72818b; font-size: 11px; }
+      .user small { color: #c4e7ee; }
+      .composer { padding: 18px max(20px, calc((100vw - 980px) / 2)); border-top: 1px solid #dce2e6; background: #fff; }
+      .composer form { display: flex; gap: 10px; }
+      textarea { flex: 1; min-height: 50px; max-height: 140px; resize: vertical; border: 1px solid #c9d3d8; border-radius: 6px; padding: 13px; outline: none; }
+      textarea:focus { border-color: #1f6173; box-shadow: 0 0 0 3px #d8eef1; }
+      button { border: 0; border-radius: 6px; padding: 0 18px; background: #1f6173; color: white; cursor: pointer; }
+      button:disabled { opacity: .5; cursor: wait; }
+      @media (max-width: 720px) { .shell { grid-template-columns: 1fr; } aside { padding: 18px; } .brand { margin-bottom: 20px; } .status { margin-top: 18px; } header { padding: 20px; } #messages { padding: 20px; } .composer { padding: 14px 20px; } }
+    </style>
+  </head>
+  <body>
+    <div class="shell">
+      <aside>
+        <div class="brand"><div class="mark">保</div><div><h1>知识库客服 Agent</h1><p>Tenant-scoped service console</p></div></div>
+        <label for="tenant">租户</label>
+        <input class="tenant" id="tenant" value="demo" aria-label="租户" />
+        <label for="knowledge-base">知识库</label>
+        <select id="knowledge-base" aria-label="知识库"></select>
+        <div class="status"><span class="dot"></span><span id="health">服务连接中</span></div>
+      </aside>
+      <main>
+        <header><h2>客服对话</h2><span id="model">读取配置中</span></header>
+        <section id="messages" aria-live="polite"><div class="message assistant"><small>Agent</small>您好，我可以根据当前知识库协助查询保险服务信息。请描述您的问题。</div></section>
+        <div class="composer"><form id="chat-form"><textarea id="prompt" placeholder="输入您的问题" aria-label="问题" required></textarea><button id="send" type="submit">发送</button></form></div>
+      </main>
+    </div>
+    <script>
+      const tenant = document.querySelector('#tenant');
+      const kb = document.querySelector('#knowledge-base');
+      const messages = document.querySelector('#messages');
+      const prompt = document.querySelector('#prompt');
+      const send = document.querySelector('#send');
+      const health = document.querySelector('#health');
+      const model = document.querySelector('#model');
+      const addMessage = (role, text = '') => { const el = document.createElement('div'); el.className = `message ${role}`; el.innerHTML = `<small>${role === 'user' ? '您' : 'Agent'}</small>`; const body = document.createElement('span'); body.textContent = text; el.append(body); messages.append(el); messages.scrollTop = messages.scrollHeight; return body; };
+      async function load() { const [config, bases] = await Promise.all([fetch('/api/v1/config/public'), fetch(`/api/v1/knowledge-bases?tenant_id=${encodeURIComponent(tenant.value)}`)]); const configData = await config.json(); const basesData = await bases.json(); model.textContent = `${configData.model_provider} / ${configData.model_name}`; health.textContent = '服务已连接'; kb.replaceChildren(...basesData.map(item => { const option = document.createElement('option'); option.value = item.knowledge_base_id; option.textContent = item.name; return option; })); }
+      document.querySelector('#chat-form').addEventListener('submit', async (event) => { event.preventDefault(); const value = prompt.value.trim(); if (!value) return; addMessage('user', value); prompt.value = ''; send.disabled = true; const answer = addMessage('assistant'); try { const response = await fetch('/api/v1/chat/stream', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({ tenant_id: tenant.value, knowledge_base_id: kb.value || null, messages: [{role: 'user', content: value}] }) }); if (!response.ok) throw new Error((await response.json()).detail || '请求失败'); const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = ''; while (true) { const {value: chunk, done} = await reader.read(); if (done) break; buffer += decoder.decode(chunk, {stream: true}); const events = buffer.split('\n\n'); buffer = events.pop(); for (const raw of events) { const data = raw.split('\n').find(line => line.startsWith('data:')); if (!data) continue; const payload = JSON.parse(data.slice(5)); if (payload.content) answer.textContent += payload.content; } messages.scrollTop = messages.scrollHeight; } } catch (error) { answer.textContent = error.message; } finally { send.disabled = false; prompt.focus(); } });
+      load().catch(() => { health.textContent = '服务不可用'; });
+    </script>
+  </body>
+</html>

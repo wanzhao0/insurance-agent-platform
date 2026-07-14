@@ -1,0 +1,449 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>保险 Agent 平台原型</title>
+    <style>
+      :root {
+        --nav: #16242d;
+        --nav-soft: #20343e;
+        --nav-text: #edf4f5;
+        --nav-muted: #9db0b7;
+        --bg: #f4f7f8;
+        --surface: #ffffff;
+        --text: #1c2b33;
+        --muted: #71818a;
+        --line: #dfe7ea;
+        --line-dark: #ccd9de;
+        --teal: #1f6675;
+        --teal-soft: #e3f1f2;
+        --gold: #e4a43d;
+        --gold-soft: #fff2d7;
+        --green: #258a63;
+        --green-soft: #e2f4ea;
+        --red: #b84c52;
+        --red-soft: #fbe9ea;
+        --violet: #7265a8;
+        --violet-soft: #eeeaf9;
+        --shadow: 0 12px 32px rgba(30, 52, 62, .08);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      }
+      * { box-sizing: border-box; }
+      body { margin: 0; background: var(--bg); color: var(--text); }
+      button, input, select, textarea { font: inherit; }
+      button { cursor: pointer; }
+      button:focus-visible, input:focus-visible, select:focus-visible, textarea:focus-visible { outline: 3px solid rgba(31, 102, 117, .22); outline-offset: 2px; }
+      .app-shell { display: grid; grid-template-columns: 248px minmax(0, 1fr); min-height: 100vh; }
+      .sidebar { display: flex; flex-direction: column; min-height: 100vh; padding: 24px 16px 18px; background: var(--nav); color: var(--nav-text); }
+      .brand { display: flex; align-items: center; gap: 11px; padding: 0 10px; }
+      .brand-mark { display: grid; place-items: center; width: 36px; height: 36px; border-radius: 9px; background: var(--gold); color: var(--nav); font-weight: 800; }
+      .brand-name { font-size: 15px; font-weight: 600; letter-spacing: 0; }
+      .brand-subtitle { margin-top: 3px; color: var(--nav-muted); font-size: 11px; }
+      .workspace { margin: 28px 0 18px; padding: 12px 13px; border: 1px solid #38515c; border-radius: 7px; background: #1c303a; }
+      .workspace-label { color: var(--nav-muted); font-size: 11px; }
+      .workspace-name { display: flex; justify-content: space-between; gap: 10px; margin-top: 6px; font-size: 13px; }
+      .workspace-name span:last-child { color: var(--gold); font-size: 11px; }
+      .nav-label { padding: 8px 12px; color: #78909a; font-size: 11px; letter-spacing: .04em; }
+      .nav { display: grid; gap: 4px; }
+      .nav-item { display: flex; align-items: center; gap: 11px; width: 100%; padding: 10px 12px; border: 0; border-radius: 6px; background: transparent; color: var(--nav-muted); text-align: left; font-size: 13px; }
+      .nav-item:hover { background: #1c333e; color: var(--nav-text); }
+      .nav-item.active { background: var(--teal); color: #fff; }
+      .nav-symbol { display: grid; place-items: center; width: 17px; color: currentColor; font-size: 13px; }
+      .sidebar-footer { margin-top: auto; padding: 15px 10px 0; border-top: 1px solid #2c414b; color: var(--nav-muted); font-size: 11px; line-height: 1.6; }
+      .sidebar-footer strong { display: block; color: var(--nav-text); font-size: 12px; font-weight: 500; }
+      .main-shell { min-width: 0; }
+      .topbar { display: flex; align-items: center; justify-content: space-between; min-height: 70px; padding: 0 32px; border-bottom: 1px solid var(--line); background: rgba(255,255,255,.9); }
+      .crumbs { display: flex; align-items: center; gap: 10px; color: var(--muted); font-size: 12px; }
+      .crumbs strong { color: var(--text); font-size: 14px; font-weight: 600; }
+      .top-actions { display: flex; align-items: center; gap: 10px; }
+      .icon-button { display: grid; place-items: center; width: 32px; height: 32px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); color: var(--muted); }
+      .icon-button:hover { color: var(--teal); border-color: var(--teal); }
+      .env-pill { padding: 5px 8px; border-radius: 4px; background: var(--green-soft); color: var(--green); font-size: 10px; font-weight: 700; letter-spacing: .08em; }
+      .avatar { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--violet-soft); color: var(--violet); font-size: 12px; font-weight: 600; }
+      .main-content { max-width: 1500px; margin: 0 auto; padding: 32px; }
+      .page-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; margin-bottom: 24px; }
+      .page-head h1 { margin: 0; font-size: 23px; font-weight: 600; letter-spacing: 0; }
+      .page-head p { margin: 7px 0 0; color: var(--muted); font-size: 13px; }
+      .head-actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 9px; }
+      .button { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; padding: 0 13px; border: 1px solid var(--line-dark); border-radius: 6px; background: var(--surface); color: var(--text); font-size: 12px; }
+      .button:hover { border-color: var(--teal); color: var(--teal); }
+      .button.primary { border-color: var(--teal); background: var(--teal); color: #fff; }
+      .button.primary:hover { background: #185563; }
+      .button.ghost { border-color: transparent; background: transparent; color: var(--muted); }
+      .button.danger { border-color: var(--red-soft); color: var(--red); }
+      .metric-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 14px; margin-bottom: 20px; }
+      .metric { padding: 17px 18px; border: 1px solid var(--line); border-top: 3px solid var(--teal); background: var(--surface); box-shadow: 0 3px 10px rgba(30, 52, 62, .03); }
+      .metric:nth-child(2) { border-top-color: var(--gold); }
+      .metric:nth-child(3) { border-top-color: var(--violet); }
+      .metric:nth-child(4) { border-top-color: var(--green); }
+      .metric-label { color: var(--muted); font-size: 12px; }
+      .metric-value { margin-top: 9px; font-size: 25px; font-weight: 600; }
+      .metric-foot { display: flex; align-items: center; gap: 6px; margin-top: 8px; color: var(--muted); font-size: 11px; }
+      .trend-up { color: var(--green); font-weight: 600; }
+      .content-grid { display: grid; grid-template-columns: minmax(0, 1.45fr) minmax(300px, .8fr); gap: 18px; margin-bottom: 18px; }
+      .content-grid.equal { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+      .panel { border: 1px solid var(--line); background: var(--surface); box-shadow: 0 3px 10px rgba(30, 52, 62, .03); }
+      .panel-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 17px 18px; border-bottom: 1px solid var(--line); }
+      .panel-title { margin: 0; font-size: 14px; font-weight: 600; }
+      .panel-note { color: var(--muted); font-size: 11px; }
+      .panel-body { padding: 18px; }
+      .activity-bars { display: flex; align-items: flex-end; gap: 9px; height: 150px; padding-top: 10px; }
+      .activity-bar { display: flex; flex: 1; flex-direction: column; align-items: center; gap: 7px; height: 100%; justify-content: flex-end; }
+      .activity-bar i { display: block; width: 100%; max-width: 34px; min-height: 5px; border-radius: 3px 3px 1px 1px; background: var(--teal); }
+      .activity-bar:nth-child(3n) i { background: var(--gold); }
+      .activity-bar span { color: var(--muted); font-size: 10px; }
+      .quick-list { display: grid; gap: 8px; }
+      .quick-action { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; padding: 12px 13px; border: 1px solid var(--line); background: #fbfcfc; color: var(--text); text-align: left; }
+      .quick-action:hover { border-color: var(--teal); background: var(--teal-soft); }
+      .quick-action span:last-child { color: var(--teal); }
+      .table-panel { overflow: hidden; }
+      .table-wrap { overflow-x: auto; }
+      table { width: 100%; border-collapse: collapse; font-size: 12px; }
+      th { padding: 11px 18px; background: #f8fafb; color: var(--muted); font-size: 11px; font-weight: 500; text-align: left; white-space: nowrap; }
+      td { padding: 14px 18px; border-top: 1px solid var(--line); vertical-align: middle; }
+      tbody tr:hover { background: #fbfdfd; }
+      .cell-title { color: var(--text); font-weight: 600; }
+      .cell-sub { margin-top: 4px; color: var(--muted); font-size: 11px; }
+      .status { display: inline-flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; white-space: nowrap; }
+      .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+      .status.green { background: var(--green-soft); color: var(--green); }
+      .status.gold { background: var(--gold-soft); color: #a96e12; }
+      .status.red { background: var(--red-soft); color: var(--red); }
+      .status.violet { background: var(--violet-soft); color: var(--violet); }
+      .row-action { border: 0; background: transparent; color: var(--teal); font-size: 12px; }
+      .toolbar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 18px; border-bottom: 1px solid var(--line); }
+      .toolbar-left, .toolbar-right { display: flex; flex-wrap: wrap; align-items: center; gap: 9px; }
+      .search { width: 220px; height: 34px; padding: 0 11px; border: 1px solid var(--line-dark); border-radius: 6px; background: var(--surface); color: var(--text); font-size: 12px; }
+      .select { height: 34px; padding: 0 28px 0 10px; border: 1px solid var(--line-dark); border-radius: 6px; background: var(--surface); color: var(--text); font-size: 12px; }
+      .filter-tab { min-height: 30px; padding: 0 10px; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--muted); font-size: 12px; }
+      .filter-tab.active { border-bottom-color: var(--teal); color: var(--teal); font-weight: 600; }
+      .toggle { position: relative; width: 34px; height: 20px; padding: 0; border: 0; border-radius: 10px; background: #c7d4d8; }
+      .toggle::after { content: ""; position: absolute; top: 3px; left: 3px; width: 14px; height: 14px; border-radius: 50%; background: #fff; transition: transform .18s ease; }
+      .toggle.on { background: var(--teal); }
+      .toggle.on::after { transform: translateX(14px); }
+      .split-layout { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(320px, .75fr); gap: 18px; align-items: start; }
+      .detail-list { display: grid; gap: 13px; }
+      .detail-item { display: flex; justify-content: space-between; gap: 20px; padding-bottom: 12px; border-bottom: 1px solid var(--line); }
+      .detail-item:last-child { border-bottom: 0; padding-bottom: 0; }
+      .detail-label { color: var(--muted); font-size: 11px; }
+      .detail-value { color: var(--text); font-size: 12px; font-weight: 500; text-align: right; }
+      .context-box { margin-top: 14px; padding: 13px; border-left: 3px solid var(--gold); background: #fffaf1; color: #5c4b32; font-size: 12px; line-height: 1.6; }
+      .form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 17px 18px; }
+      .form-field { display: grid; gap: 7px; }
+      .form-field.full { grid-column: 1 / -1; }
+      .form-field label { color: var(--muted); font-size: 11px; }
+      .form-field input, .form-field select, .form-field textarea { width: 100%; border: 1px solid var(--line-dark); border-radius: 6px; padding: 10px 11px; background: var(--surface); color: var(--text); font-size: 12px; }
+      .form-field textarea { min-height: 105px; resize: vertical; line-height: 1.6; }
+      .form-help { color: var(--muted); font-size: 10px; line-height: 1.5; }
+      .tool-row { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 14px 0; border-bottom: 1px solid var(--line); }
+      .tool-row:last-child { border-bottom: 0; }
+      .tool-name { font-size: 12px; font-weight: 600; }
+      .tool-description { margin-top: 4px; color: var(--muted); font-size: 11px; }
+      .workspace-layout { display: grid; grid-template-columns: 235px minmax(0, 1fr) 300px; min-height: 650px; border: 1px solid var(--line); background: var(--surface); box-shadow: 0 3px 10px rgba(30, 52, 62, .03); }
+      .conversation-list, .inspector { min-width: 0; background: #fbfcfc; }
+      .conversation-list { border-right: 1px solid var(--line); }
+      .inspector { border-left: 1px solid var(--line); }
+      .conversation-head, .inspector-head { padding: 16px; border-bottom: 1px solid var(--line); }
+      .conversation-items { display: grid; gap: 2px; padding: 8px; }
+      .conversation-item { display: grid; gap: 5px; padding: 12px 10px; border: 0; border-radius: 5px; background: transparent; text-align: left; }
+      .conversation-item:hover, .conversation-item.active { background: var(--teal-soft); }
+      .conversation-item strong { overflow: hidden; color: var(--text); font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+      .conversation-item span { color: var(--muted); font-size: 10px; }
+      .chat-main { display: flex; min-width: 0; flex-direction: column; }
+      .chat-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+      .chat-header strong { font-size: 14px; }
+      .chat-header small { display: block; margin-top: 4px; color: var(--muted); font-size: 10px; }
+      .chat-messages { display: flex; flex: 1; min-height: 430px; flex-direction: column; gap: 15px; overflow: auto; padding: 24px; background: #f8fafb; }
+      .chat-message { max-width: 78%; padding: 12px 14px; border: 1px solid var(--line); border-radius: 7px; background: var(--surface); color: var(--text); font-size: 12px; line-height: 1.65; white-space: pre-wrap; }
+      .chat-message.user { align-self: flex-end; border-color: var(--teal); background: var(--teal); color: #fff; }
+      .chat-message .message-meta { margin-bottom: 5px; color: var(--muted); font-size: 10px; }
+      .chat-message.user .message-meta { color: #d6edef; }
+      .chat-composer { display: flex; gap: 9px; padding: 14px; border-top: 1px solid var(--line); background: var(--surface); }
+      .chat-composer textarea { flex: 1; min-height: 43px; max-height: 100px; resize: vertical; border: 1px solid var(--line-dark); border-radius: 6px; padding: 11px; font-size: 12px; }
+      .citation-list { display: grid; gap: 9px; padding: 13px 16px; }
+      .citation { padding: 11px; border: 1px solid var(--line); border-left: 3px solid var(--gold); background: #fff; text-align: left; }
+      .citation:hover { border-color: var(--gold); background: var(--gold-soft); }
+      .citation strong { display: block; font-size: 11px; }
+      .citation span { display: block; margin-top: 5px; color: var(--muted); font-size: 10px; line-height: 1.55; }
+      .empty { padding: 32px 18px; color: var(--muted); text-align: center; font-size: 12px; }
+      .modal-backdrop { position: fixed; inset: 0; z-index: 10; display: grid; place-items: center; padding: 20px; background: rgba(19, 35, 44, .44); }
+      .modal { width: min(600px, 100%); max-height: calc(100vh - 40px); overflow: auto; border: 1px solid var(--line); background: var(--surface); box-shadow: var(--shadow); }
+      .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 17px 19px; border-bottom: 1px solid var(--line); }
+      .modal-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+      .modal-close { border: 0; background: transparent; color: var(--muted); font-size: 20px; line-height: 1; }
+      .modal-body { padding: 19px; }
+      .modal-foot { display: flex; justify-content: flex-end; gap: 9px; padding: 14px 19px; border-top: 1px solid var(--line); }
+      .toast { position: fixed; right: 26px; bottom: 26px; z-index: 20; max-width: 330px; padding: 12px 15px; border: 1px solid var(--line); background: var(--nav); color: #fff; box-shadow: var(--shadow); font-size: 12px; opacity: 0; transform: translateY(12px); pointer-events: none; transition: opacity .18s ease, transform .18s ease; }
+      .toast.visible { opacity: 1; transform: translateY(0); }
+      .toast.success { border-left: 3px solid var(--green); }
+      .toast.info { border-left: 3px solid var(--gold); }
+      @media (max-width: 1180px) { .workspace-layout { grid-template-columns: 210px minmax(0, 1fr); } .inspector { display: none; } }
+      @media (max-width: 900px) { .app-shell { grid-template-columns: 76px minmax(0, 1fr); } .sidebar { padding: 18px 10px; } .brand { justify-content: center; padding: 0; } .brand-copy, .workspace, .nav-label, .nav-item span:not(.nav-symbol), .sidebar-footer { display: none; } .nav-item { justify-content: center; padding: 12px 8px; } .main-content { padding: 24px; } .metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } .content-grid, .content-grid.equal, .split-layout { grid-template-columns: 1fr; } }
+      @media (max-width: 620px) { .topbar { padding: 0 18px; } .top-actions .env-pill { display: none; } .main-content { padding: 19px 14px; } .page-head { display: block; } .head-actions { justify-content: flex-start; margin-top: 14px; } .metric-grid { grid-template-columns: 1fr 1fr; gap: 9px; } .metric { padding: 13px; } .metric-value { font-size: 20px; } .toolbar { align-items: stretch; } .toolbar-left, .toolbar-right { width: 100%; } .search { flex: 1; width: auto; } .workspace-layout { grid-template-columns: 1fr; } .conversation-list { display: none; } .chat-message { max-width: 90%; } .form-grid { grid-template-columns: 1fr; } .form-field.full { grid-column: auto; } }
+    </style>
+  </head>
+  <body>
+    <div id="prototype-root" class="app-shell">
+      <aside class="sidebar">
+        <div class="brand"><div class="brand-mark">保</div><div class="brand-copy"><div class="brand-name">保险 Agent 平台</div><div class="brand-subtitle">Operations prototype</div></div></div>
+        <div class="workspace"><div class="workspace-label">当前工作区</div><div class="workspace-name"><span>启明保险集团</span><span>演示环境</span></div></div>
+        <div class="nav-label">平台工作台</div>
+        <nav class="nav" aria-label="主导航">
+          <button class="nav-item active" data-view="overview"><span class="nav-symbol">◉</span><span>运营总览</span></button>
+          <button class="nav-item" data-view="chat"><span class="nav-symbol">▰</span><span>客服工作台</span></button>
+          <button class="nav-item" data-view="knowledge"><span class="nav-symbol">▤</span><span>知识库</span></button>
+          <button class="nav-item" data-view="documents"><span class="nav-symbol">▧</span><span>文档管理</span></button>
+          <button class="nav-item" data-view="tenants"><span class="nav-symbol">◎</span><span>租户配置</span></button>
+          <button class="nav-item" data-view="runtime"><span class="nav-symbol">⚙</span><span>模型与工具</span></button>
+        </nav>
+        <div class="sidebar-footer"><strong>平台状态 · 正常</strong>Mock model / In-memory adapters<br />Prototype v0.1</div>
+      </aside>
+      <section class="main-shell">
+        <header class="topbar">
+          <div class="crumbs"><span>平台</span><span>/</span><strong id="view-title">平台概览</strong></div>
+          <div class="top-actions"><button class="icon-button" data-action="notifications" title="查看通知" aria-label="查看通知">•</button><span class="env-pill">LOCAL</span><div class="avatar" title="当前用户">Z</div></div>
+        </header>
+        <main id="main-content" class="main-content"></main>
+      </section>
+      <div id="modal-root"></div>
+      <div id="toast" class="toast" role="status" aria-live="polite"></div>
+    </div>
+    <script>
+      const state = {
+        view: 'overview',
+        overview: { tenantCount: 3, knowledgeBaseCount: 4, documentCount: 69, enabledKnowledgeBaseCount: 3 },
+        hydrated: false,
+        selectedKb: 'insurance-general',
+        selectedTenant: 'demo',
+        kbFilter: 'all',
+        documents: [
+          { id: 'demo-claim', title: '理赔材料提交', kb: 'insurance-general', category: '理赔服务', status: '已索引', updated: '今天 09:42', version: 1, content: '申请理赔通常需要提供保单信息、被保险人身份证明、事故证明和与损失相关的材料。不同产品和事故类型的要求可能不同，请以保单约定和客服审核结果为准。' },
+          { id: 'demo-cooling-off', title: '犹豫期说明', kb: 'insurance-general', category: '产品条款', status: '已索引', updated: '昨天 16:18', version: 1, content: '长期人身保险产品可能设置犹豫期。犹豫期的具体天数、退保规则和费用处理以产品条款及投保单约定为准。' },
+          { id: 'motor-claim', title: '车险事故处理指引', kb: 'motor-service', category: '理赔服务', status: '处理中', updated: '昨天 14:07', version: 3, content: '发生交通事故后，请先确保人员安全并按照当地要求报警。报案和材料提交时效以产品条款与服务指引为准。' },
+          { id: 'health-reimburse', title: '医疗费用报销范围', kb: 'health-products', category: '产品条款', status: '待复核', updated: '07-12 11:26', version: 2, content: '医疗费用报销范围需要结合产品责任、医院等级、免赔额以及条款约定综合判断。' }
+        ],
+        kbs: [
+          { id: 'insurance-general', name: '保险通用知识库', tenant: 'demo', description: '通用保险产品、理赔和服务知识。', docs: 2, version: 1, status: '启用', updated: '今天 09:42' },
+          { id: 'motor-service', name: '车险服务知识库', tenant: 'demo', description: '车险报案、事故处理和查勘定损指引。', docs: 18, version: 4, status: '启用', updated: '昨天 14:07' },
+          { id: 'health-products', name: '健康险产品知识库', tenant: 'demo', description: '医疗险、重疾险产品说明和服务规则。', docs: 37, version: 7, status: '待复核', updated: '07-12 11:26' },
+          { id: 'partner-claims', name: '合作渠道理赔库', tenant: 'partner-a', description: '合作渠道专属服务和理赔材料。', docs: 12, version: 2, status: '停用', updated: '07-09 18:03' }
+        ],
+        tenants: [
+          { id: 'demo', name: '启明保险集团', plan: '企业版', defaultKb: 'insurance-general', kbs: 3, status: '正常', updated: '今天 09:42' },
+          { id: 'partner-a', name: '安顺渠道合作方', plan: '合作版', defaultKb: 'partner-claims', kbs: 1, status: '正常', updated: '07-09 18:03' },
+          { id: 'sandbox', name: '产品测试租户', plan: '沙箱', defaultKb: 'health-products', kbs: 2, status: '受限', updated: '07-08 10:11' }
+        ],
+        runtime: { provider: 'mock', model: 'insurance-agent-demo', baseUrl: 'https://api.openai.com/v1', timeout: 60, topK: 4, rate: 60, apiKeyConfigured: false },
+        chatMessages: [
+          { role: 'assistant', text: '您好，我可以根据当前知识库协助查询保险服务信息。请描述您的问题。', time: '09:42' },
+          { role: 'user', text: '理赔需要准备什么材料？', time: '09:43' },
+          { role: 'assistant', text: '通常需要准备保单信息、被保险人身份证明、事故证明，以及与损失相关的材料。具体要求可能因产品和事故类型不同，请以保单约定和人工审核结果为准。', time: '09:43' }
+        ]
+      };
+
+      const meta = {
+        overview: ['平台概览', '查看系统运行状态、知识库规模和近期活动'],
+        chat: ['客服工作台', '以租户和知识库为上下文处理客户问题'],
+        knowledge: ['知识库', '管理行业知识源、版本和检索范围'],
+        documents: ['文档管理', '维护文档内容、索引状态和版本'],
+        tenants: ['租户配置', '管理租户边界、默认知识库和业务参数'],
+        runtime: ['模型与工具', '配置服务运行参数和 Agent 工具能力']
+      };
+
+      const esc = (value) => String(value).replace(/[&<>'"]/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' })[char]);
+      const kbById = (id) => state.kbs.find((item) => item.id === id);
+      const tenantById = (id) => state.tenants.find((item) => item.id === id);
+      const statusClass = (status) => ({ '启用': 'green', '正常': 'green', '已索引': 'green', '处理中': 'gold', '待复核': 'violet', '停用': 'red', '受限': 'gold' }[status] || 'gold');
+      const api = async (path, options = {}) => {
+        const response = await fetch(path, options);
+        if (!response.ok) {
+          let detail = `请求失败（${response.status}）`;
+          try { const body = await response.json(); detail = body.detail || body.error?.message || detail; } catch (_) {}
+          throw new Error(detail);
+        }
+        return response.status === 204 ? null : response.json();
+      };
+      const formatUpdated = (value) => value ? new Date(value).toLocaleString('zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit' }) : '服务端';
+      const mapKnowledgeBase = (item) => ({ id: item.knowledge_base_id, name: item.name, tenant: item.tenant_id, description: item.description, docs: item.document_count, version: item.version, status: item.enabled ? '启用' : '停用', updated: '服务端' });
+      const mapDocument = (item) => ({ id: item.document_id, title: item.title, kb: item.knowledge_base_id, category: item.metadata?.category || '未分类', status: '已索引', updated: formatUpdated(item.created_at), version: item.version, content: item.content });
+      const mapTenant = (item) => ({ id: item.tenant_id, name: item.name, plan: item.plan, defaultKb: item.default_knowledge_base_id, kbs: item.knowledge_base_count, status: item.enabled ? '正常' : '停用', updated: '服务端' });
+      async function hydrateState() {
+        const [overview, knowledgeBases, documents, tenants, runtime] = await Promise.all([
+          api('/api/v1/admin/overview'), api('/api/v1/admin/knowledge-bases'), api('/api/v1/admin/documents'), api('/api/v1/admin/tenants'), api('/api/v1/admin/runtime')
+        ]);
+        state.overview = { tenantCount: overview.tenant_count, knowledgeBaseCount: overview.knowledge_base_count, documentCount: overview.document_count, enabledKnowledgeBaseCount: overview.enabled_knowledge_base_count };
+        state.kbs = knowledgeBases.map(mapKnowledgeBase);
+        state.documents = documents.map(mapDocument);
+        state.tenants = tenants.map(mapTenant);
+        state.runtime = { provider: runtime.model_provider, model: runtime.model_name, baseUrl: runtime.model_base_url, timeout: runtime.request_timeout_seconds, topK: runtime.rag_top_k, rate: runtime.rate_limit_requests, apiKeyConfigured: runtime.model_api_key_configured };
+        state.hydrated = true;
+        if (!kbById(state.selectedKb)) state.selectedKb = state.kbs[0]?.id || 'insurance-general';
+        renderApp();
+      }
+
+      function pageHead(title, subtitle, actions = '') {
+        return `<div class="page-head"><div><h1>${title}</h1><p>${subtitle}</p></div><div class="head-actions">${actions}</div></div>`;
+      }
+
+      function renderOverview() {
+        return `${pageHead('平台概览', '启明保险集团 · 运营空间', '<button class="button" data-action="refresh">↻ 刷新数据</button><button class="button primary" data-view="documents">＋ 添加文档</button>')}
+          <div class="metric-grid">
+            <div class="metric"><div class="metric-label">活跃租户</div><div class="metric-value">${state.overview.tenantCount}</div><div class="metric-foot"><span class="trend-up">+1</span> 本月新增</div></div>
+            <div class="metric"><div class="metric-label">知识库</div><div class="metric-value">${state.overview.knowledgeBaseCount}</div><div class="metric-foot"><span class="trend-up">${state.overview.enabledKnowledgeBaseCount}</span> 个已启用</div></div>
+            <div class="metric"><div class="metric-label">已管理文档</div><div class="metric-value">${state.overview.documentCount}</div><div class="metric-foot"><span class="trend-up">+8</span> 待处理变更</div></div>
+            <div class="metric"><div class="metric-label">平均首字响应</div><div class="metric-value">1.8s</div><div class="metric-foot"><span class="trend-up">-0.3s</span> 较上周</div></div>
+          </div>
+          <div class="content-grid">
+            <section class="panel"><div class="panel-head"><h2 class="panel-title">近 7 日 Agent 请求</h2><span class="panel-note">成功率 98.7%</span></div><div class="panel-body"><div class="activity-bars">${[42, 57, 51, 75, 64, 88, 70].map((height, index) => `<div class="activity-bar"><i style="height:${height}%"></i><span>${['07/08', '07/09', '07/10', '07/11', '07/12', '07/13', '今天'][index]}</span></div>`).join('')}</div></div></section>
+            <section class="panel"><div class="panel-head"><h2 class="panel-title">快捷操作</h2><span class="panel-note">常用管理入口</span></div><div class="panel-body"><div class="quick-list"><button class="quick-action" data-action="new-doc"><span>上传知识文档</span><span>→</span></button><button class="quick-action" data-action="new-kb"><span>创建知识库</span><span>→</span></button><button class="quick-action" data-view="runtime"><span>检查模型配置</span><span>→</span></button><button class="quick-action" data-view="chat"><span>打开客服工作台</span><span>→</span></button></div></div></section>
+          </div>
+          <section class="panel table-panel"><div class="panel-head"><h2 class="panel-title">最近活动</h2><button class="button ghost" data-view="documents">查看全部 →</button></div><div class="table-wrap"><table><thead><tr><th>活动</th><th>对象</th><th>操作者</th><th>时间</th><th>状态</th></tr></thead><tbody><tr><td><div class="cell-title">文档索引完成</div><div class="cell-sub">内容已进入检索范围</div></td><td>理赔材料提交</td><td>系统任务</td><td>今天 09:42</td><td><span class="status green">已完成</span></td></tr><tr><td><div class="cell-title">知识库版本发布</div><div class="cell-sub">默认版本切换</div></td><td>保险通用知识库 v1</td><td>张昭</td><td>昨天 16:18</td><td><span class="status green">已发布</span></td></tr><tr><td><div class="cell-title">模型连接检查</div><div class="cell-sub">mock provider</div></td><td>insurance-agent-demo</td><td>系统任务</td><td>昨天 15:06</td><td><span class="status gold">演示模式</span></td></tr></tbody></table></div></section>`;
+      }
+
+      function renderChat() {
+        const citations = state.documents.filter((doc) => doc.kb === state.selectedKb).slice(0, 3);
+        return `${pageHead('客服工作台', '以知识库为依据处理客户咨询并保留引用依据', '<button class="button" data-action="clear-chat">清空当前会话</button><button class="button primary" data-action="new-chat">＋ 新建会话</button>')}
+          <div class="workspace-layout">
+            <aside class="conversation-list"><div class="conversation-head"><div class="panel-title">会话</div><div class="panel-note" style="margin-top:5px">今天 12 个活跃会话</div></div><div class="conversation-items"><button class="conversation-item active"><strong>理赔需要准备什么材料？</strong><span>刚刚 · 保险通用知识库</span></button><button class="conversation-item"><strong>犹豫期可以退保吗？</strong><span>12 分钟前 · 保险通用知识库</span></button><button class="conversation-item"><strong>车险报案流程</strong><span>昨天 · 车险服务知识库</span></button><button class="conversation-item"><strong>医疗费用如何报销？</strong><span>昨天 · 健康险产品知识库</span></button></div></aside>
+            <section class="chat-main"><div class="chat-header"><div><strong>理赔需要准备什么材料？</strong><small>租户：启明保险集团 · 知识库：${esc(kbById(state.selectedKb)?.name || '保险通用知识库')}</small></div><span class="status green">运行中</span></div><div id="chat-messages" class="chat-messages">${state.chatMessages.map((message) => `<div class="chat-message ${message.role === 'user' ? 'user' : ''}"><div class="message-meta">${message.role === 'user' ? '您' : 'Agent'} · ${message.time}</div><div class="message-content">${esc(message.text)}</div></div>`).join('')}</div><form class="chat-composer" data-form="chat"><textarea name="message" aria-label="输入客户问题" placeholder="输入客户问题，按发送开始测试"></textarea><button class="button primary" type="submit">发送</button></form></section>
+            <aside class="inspector"><div class="inspector-head"><div class="panel-title">回答依据</div><div class="panel-note" style="margin-top:5px">本次检索命中 2 条内容</div></div><div class="citation-list">${citations.map((doc, index) => `<button class="citation" data-action="open-doc" data-doc="${esc(doc.id)}"><strong>[${index + 1}] ${esc(doc.title)}</strong><span>${esc(doc.content.slice(0, 78))}...</span></button>`).join('')}</div><div class="inspector-head" style="border-top:1px solid var(--line); border-bottom:0"><div class="panel-title">运行信息</div></div><div class="panel-body"><div class="detail-list"><div class="detail-item"><span class="detail-label">模型</span><span class="detail-value">${esc(state.runtime.model)}</span></div><div class="detail-item"><span class="detail-label">检索 Top K</span><span class="detail-value">${state.runtime.topK}</span></div><div class="detail-item"><span class="detail-label">响应策略</span><span class="detail-value">知识库优先</span></div></div><div class="context-box">未命中明确条款时，Agent 会提示人工复核，不直接给出承保或合同结论。</div></div></aside>
+          </div>`;
+      }
+
+      function renderKnowledge() {
+        const rows = state.kbs.filter((kb) => state.kbFilter === 'all' || (state.kbFilter === 'enabled' ? kb.status === '启用' : kb.status !== '启用'));
+        const selected = kbById(state.selectedKb) || rows[0];
+        return `${pageHead('知识库', '管理不同业务域的知识集合、版本和可用范围', '<button class="button" data-action="import-kb">导入配置</button><button class="button primary" data-action="new-kb">＋ 新建知识库</button>')}
+          <div class="split-layout"><section class="panel table-panel"><div class="toolbar"><div class="toolbar-left"><button class="filter-tab ${state.kbFilter === 'all' ? 'active' : ''}" data-kb-filter="all">全部（${state.kbs.length}）</button><button class="filter-tab ${state.kbFilter === 'enabled' ? 'active' : ''}" data-kb-filter="enabled">已启用</button><button class="filter-tab ${state.kbFilter === 'review' ? 'active' : ''}" data-kb-filter="review">待处理</button></div><div class="toolbar-right"><input id="kb-search" class="search" placeholder="搜索知识库" aria-label="搜索知识库" /></div></div><div class="table-wrap"><table><thead><tr><th>知识库</th><th>租户</th><th>文档</th><th>版本</th><th>更新时间</th><th>状态</th><th></th></tr></thead><tbody>${rows.map((kb) => `<tr><td><button class="row-action" data-action="select-kb" data-kb="${esc(kb.id)}"><div class="cell-title">${esc(kb.name)}</div><div class="cell-sub">${esc(kb.description)}</div></button></td><td>${esc(tenantById(kb.tenant)?.name || kb.tenant)}</td><td>${kb.docs}</td><td>v${kb.version}</td><td>${esc(kb.updated)}</td><td><span class="status ${statusClass(kb.status)}">${esc(kb.status)}</span></td><td><button class="toggle ${kb.status === '启用' ? 'on' : ''}" data-action="toggle-kb" data-kb="${esc(kb.id)}" aria-label="切换知识库状态"></button></td></tr>`).join('')}</tbody></table></div></section><aside class="panel"><div class="panel-head"><h2 class="panel-title">知识库详情</h2><span class="panel-note">当前选中</span></div><div class="panel-body">${selected ? `<div class="cell-title" style="font-size:15px">${esc(selected.name)}</div><div class="cell-sub" style="margin-top:7px">${esc(selected.description)}</div><div class="detail-list" style="margin-top:22px"><div class="detail-item"><span class="detail-label">知识库 ID</span><span class="detail-value">${esc(selected.id)}</span></div><div class="detail-item"><span class="detail-label">所属租户</span><span class="detail-value">${esc(tenantById(selected.tenant)?.name || selected.tenant)}</span></div><div class="detail-item"><span class="detail-label">文档数量</span><span class="detail-value">${selected.docs} 篇</span></div><div class="detail-item"><span class="detail-label">当前版本</span><span class="detail-value">v${selected.version}</span></div><div class="detail-item"><span class="detail-label">检索状态</span><span class="detail-value"><span class="status ${statusClass(selected.status)}">${esc(selected.status)}</span></span></div></div><div style="display:flex; gap:9px; margin-top:22px"><button class="button primary" data-view="documents">管理文档</button><button class="button" data-action="edit-kb" data-kb="${esc(selected.id)}">编辑设置</button></div>` : '<div class="empty">选择一个知识库查看详情</div>'}</div></aside></div>`;
+      }
+
+      function renderDocuments() {
+        return `${pageHead('文档管理', '查看文档版本、解析状态和知识库归属', '<button class="button" data-action="batch-index">批量重建索引</button><button class="button primary" data-action="new-doc">＋ 添加文档</button>')}
+          <section class="panel table-panel"><div class="toolbar"><div class="toolbar-left"><input id="doc-search" class="search" placeholder="搜索文档标题" aria-label="搜索文档标题" /><select id="doc-kb-filter" class="select" aria-label="筛选知识库"><option value="all">全部知识库</option>${state.kbs.map((kb) => `<option value="${esc(kb.id)}">${esc(kb.name)}</option>`).join('')}</select></div><div class="toolbar-right"><button class="filter-tab active">全部</button><button class="filter-tab">已索引</button><button class="filter-tab">待处理</button></div></div><div class="table-wrap"><table><thead><tr><th>文档</th><th>知识库</th><th>类型</th><th>版本</th><th>更新时间</th><th>状态</th><th></th></tr></thead><tbody id="documents-table">${state.documents.map((doc) => `<tr data-doc-row="${esc(doc.id)}"><td><button class="row-action" data-action="open-doc" data-doc="${esc(doc.id)}"><div class="cell-title">${esc(doc.title)}</div><div class="cell-sub">${esc(doc.id)}</div></button></td><td>${esc(kbById(doc.kb)?.name || doc.kb)}</td><td>${esc(doc.category)}</td><td>v${doc.version}</td><td>${esc(doc.updated)}</td><td><span class="status ${statusClass(doc.status)}">${esc(doc.status)}</span></td><td><button class="row-action" data-action="open-doc" data-doc="${esc(doc.id)}">查看</button></td></tr>`).join('')}</tbody></table></div></section>`;
+      }
+
+      function renderTenants() {
+        return `${pageHead('租户配置', '管理租户隔离边界、默认知识库和业务参数', '<button class="button" data-action="export-tenants">导出配置</button><button class="button primary" data-action="new-tenant">＋ 新建租户</button>')}
+          <div class="split-layout"><section class="panel table-panel"><div class="toolbar"><div class="toolbar-left"><span class="panel-note">共 ${state.tenants.length} 个租户</span></div><div class="toolbar-right"><input class="search" placeholder="搜索租户" aria-label="搜索租户" /></div></div><div class="table-wrap"><table><thead><tr><th>租户</th><th>套餐</th><th>默认知识库</th><th>知识库数</th><th>更新时间</th><th>状态</th><th></th></tr></thead><tbody>${state.tenants.map((tenant) => `<tr><td><div class="cell-title">${esc(tenant.name)}</div><div class="cell-sub">${esc(tenant.id)}</div></td><td>${esc(tenant.plan)}</td><td>${esc(kbById(tenant.defaultKb)?.name || tenant.defaultKb)}</td><td>${tenant.kbs}</td><td>${esc(tenant.updated)}</td><td><span class="status ${statusClass(tenant.status)}">${esc(tenant.status)}</span></td><td><button class="row-action" data-action="edit-tenant" data-tenant="${esc(tenant.id)}">配置</button></td></tr>`).join('')}</tbody></table></div></section><aside class="panel"><div class="panel-head"><h2 class="panel-title">配置原则</h2></div><div class="panel-body"><div class="detail-list"><div class="detail-item"><span class="detail-label">数据隔离</span><span class="detail-value">按 tenant_id 强制隔离</span></div><div class="detail-item"><span class="detail-label">默认知识库</span><span class="detail-value">每个租户仅一个</span></div><div class="detail-item"><span class="detail-label">配置版本</span><span class="detail-value">发布前可预览</span></div><div class="detail-item"><span class="detail-label">密钥管理</span><span class="detail-value">仅服务端环境变量</span></div></div><div class="context-box">当前是本地原型状态，修改会保存在浏览器当前会话，不代表生产持久化方案。</div></div></aside></div>`;
+      }
+
+      function renderRuntime() {
+        return `${pageHead('模型与工具', '配置 Agent 的运行策略、模型连接和工具能力', '<button class="button" data-action="reset-runtime">恢复默认</button><button class="button primary" data-action="save-runtime">保存配置</button>')}
+          <div class="content-grid equal"><section class="panel"><div class="panel-head"><h2 class="panel-title">模型连接</h2><span class="status ${state.runtime.apiKeyConfigured ? 'green' : 'gold'}">${state.runtime.apiKeyConfigured ? '服务端密钥已配置' : '未配置服务端密钥'}</span></div><div class="panel-body"><form data-form="runtime"><div class="form-grid"><div class="form-field"><label for="runtime-provider">Provider</label><select id="runtime-provider" name="provider"><option value="mock" ${state.runtime.provider === 'mock' ? 'selected' : ''}>Mock / 演示模式</option><option value="openai-compatible" ${state.runtime.provider === 'openai-compatible' ? 'selected' : ''}>OpenAI Compatible</option></select></div><div class="form-field"><label for="runtime-model">模型名称</label><input id="runtime-model" name="model" value="${esc(state.runtime.model)}" /></div><div class="form-field full"><label for="runtime-url">Base URL</label><input id="runtime-url" name="baseUrl" value="${esc(state.runtime.baseUrl)}" /></div><div class="form-field"><label for="runtime-timeout">请求超时（秒）</label><input id="runtime-timeout" name="timeout" type="number" min="5" max="300" value="${state.runtime.timeout}" /></div><div class="form-field"><label for="runtime-topk">检索 Top K</label><input id="runtime-topk" name="topK" type="number" min="1" max="20" value="${state.runtime.topK}" /></div></div><div class="form-help" style="margin-top:18px">API Key 不在此页面录入，生产环境通过服务端环境变量注入。保存后会生成新的配置版本。</div></form></div></section><section class="panel"><div class="panel-head"><h2 class="panel-title">Agent 工具</h2><span class="panel-note">2 个工具已注册</span></div><div class="panel-body"><div class="tool-row"><div><div class="tool-name">search_knowledge_base</div><div class="tool-description">在租户范围内检索知识库内容，为回答提供引用。</div></div><button class="toggle on" aria-label="启用知识库检索"></button></div><div class="tool-row"><div><div class="tool-name">handoff_to_human</div><div class="tool-description">当问题超出知识库范围时创建人工服务任务。</div></div><button class="toggle on" aria-label="启用人工转接"></button></div><div class="tool-row"><div><div class="tool-name">policy_lookup</div><div class="tool-description">查询产品条款状态，等待接入业务插件。</div></div><button class="toggle" aria-label="启用条款查询"></button></div></div></section></div>`;
+      }
+
+      function renderApp() {
+        document.querySelector('#main-content').innerHTML = ({ overview: renderOverview, chat: renderChat, knowledge: renderKnowledge, documents: renderDocuments, tenants: renderTenants, runtime: renderRuntime }[state.view])();
+        document.querySelector('#view-title').textContent = meta[state.view][0];
+        document.querySelectorAll('.nav-item').forEach((item) => item.classList.toggle('active', item.dataset.view === state.view));
+      }
+
+      function showToast(message, type = 'success') {
+        const toast = document.querySelector('#toast');
+        toast.textContent = message; toast.className = `toast visible ${type}`;
+        window.clearTimeout(showToast.timer); showToast.timer = window.setTimeout(() => { toast.className = 'toast'; }, 2600);
+      }
+
+      function openModal(title, body, footer = '') {
+        document.querySelector('#modal-root').innerHTML = `<div class="modal-backdrop" data-action="close-modal"><section class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><div class="modal-head"><h2>${esc(title)}</h2><button class="modal-close" data-action="close-modal" aria-label="关闭">×</button></div><div class="modal-body">${body}</div>${footer ? `<div class="modal-foot">${footer}</div>` : ''}</section></div>`;
+      }
+
+      function openDocument(id) {
+        const doc = state.documents.find((item) => item.id === id); if (!doc) return;
+        openModal('文档详情', `<div class="detail-list"><div class="detail-item"><span class="detail-label">标题</span><span class="detail-value">${esc(doc.title)}</span></div><div class="detail-item"><span class="detail-label">知识库</span><span class="detail-value">${esc(kbById(doc.kb)?.name || doc.kb)}</span></div><div class="detail-item"><span class="detail-label">版本</span><span class="detail-value">v${doc.version}</span></div><div class="detail-item"><span class="detail-label">状态</span><span class="detail-value"><span class="status ${statusClass(doc.status)}">${esc(doc.status)}</span></span></div></div><div class="context-box" style="margin-top:20px">${esc(doc.content)}</div>`, `<button class="button danger" data-action="delete-doc" data-doc="${esc(doc.id)}">删除文档</button><button class="button primary" data-action="close-modal">关闭</button>`);
+      }
+
+      function openNewDocument() {
+        openModal('添加知识文档', `<form data-form="new-doc"><div class="form-grid"><div class="form-field full"><label for="new-doc-file">上传文件</label><input id="new-doc-file" name="file" type="file" accept=".md,.markdown,.txt,.csv,.tsv,.json,.pdf,.docx,.xlsx,.xlsm,.xls" required /><div class="form-help">支持 Markdown、PDF、Word、Excel、CSV 和 JSON，单文件上限 10 MiB。</div></div><div class="form-field full"><label for="new-doc-title">覆盖标题（可选）</label><input id="new-doc-title" name="title" placeholder="默认使用文件名" /></div><div class="form-field"><label for="new-doc-kb">归属知识库</label><select id="new-doc-kb" name="kb">${state.kbs.filter((kb) => kb.status !== '停用').map((kb) => `<option value="${esc(kb.id)}">${esc(kb.name)}</option>`).join('')}</select></div><div class="form-field"><label for="new-doc-category">分类</label><select id="new-doc-category" name="category"><option>产品条款</option><option>理赔服务</option><option>客服话术</option><option>业务流程</option></select></div></div></form>`, '<button class="button" data-action="close-modal">取消</button><button class="button primary" data-action="submit-new-doc">上传并进入索引</button>');
+      }
+
+      function openNewKb() {
+        openModal('新建知识库', `<form data-form="new-kb"><div class="form-grid"><div class="form-field"><label for="new-kb-id">知识库 ID</label><input id="new-kb-id" name="id" required placeholder="例如：travel-products" /></div><div class="form-field"><label for="new-kb-name">显示名称</label><input id="new-kb-name" name="name" required placeholder="例如：旅行险产品知识库" /></div><div class="form-field full"><label for="new-kb-description">用途说明</label><textarea id="new-kb-description" name="description" required placeholder="说明该知识库服务的业务范围"></textarea></div><div class="form-field"><label for="new-kb-tenant">所属租户</label><select id="new-kb-tenant" name="tenant">${state.tenants.map((tenant) => `<option value="${esc(tenant.id)}">${esc(tenant.name)}</option>`).join('')}</select></div></div></form>`, '<button class="button" data-action="close-modal">取消</button><button class="button primary" data-action="submit-new-kb">创建知识库</button>');
+      }
+
+      function openEditTenant(id) {
+        const tenant = tenantById(id); if (!tenant) return;
+        openModal('租户配置', `<form data-form="edit-tenant"><input type="hidden" name="id" value="${esc(tenant.id)}" /><div class="form-grid"><div class="form-field full"><label>租户名称</label><input value="${esc(tenant.name)}" disabled /></div><div class="form-field full"><label for="tenant-default-kb">默认知识库</label><select id="tenant-default-kb" name="defaultKb">${state.kbs.filter((kb) => kb.tenant === tenant.id || tenant.id === 'demo').map((kb) => `<option value="${esc(kb.id)}" ${kb.id === tenant.defaultKb ? 'selected' : ''}>${esc(kb.name)}</option>`).join('')}</select></div><div class="form-field"><label for="tenant-plan">套餐</label><select id="tenant-plan" name="plan"><option ${tenant.plan === '企业版' ? 'selected' : ''}>企业版</option><option ${tenant.plan === '合作版' ? 'selected' : ''}>合作版</option><option ${tenant.plan === '沙箱' ? 'selected' : ''}>沙箱</option></select></div><div class="form-field"><label for="tenant-status">状态</label><select id="tenant-status" name="status"><option ${tenant.status === '正常' ? 'selected' : ''}>正常</option><option ${tenant.status === '受限' ? 'selected' : ''}>受限</option><option ${tenant.status === '停用' ? 'selected' : ''}>停用</option></select></div></div></form>`, '<button class="button" data-action="close-modal">取消</button><button class="button primary" data-action="save-tenant">保存配置</button>');
+      }
+
+      async function handleFormSubmit(form) {
+        const data = Object.fromEntries(new FormData(form).entries());
+        if (form.dataset.form === 'chat') {
+          const message = String(data.message || '').trim();
+          if (!message) return;
+          state.chatMessages.push({ role: 'user', text: message, time: '刚刚' }, { role: 'assistant', text: '', time: '刚刚' });
+          renderApp();
+          const output = document.querySelector('#chat-messages .chat-message:last-child .message-content');
+          try {
+            const response = await fetch('/api/v1/chat/stream', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ tenant_id: 'demo', knowledge_base_id: state.selectedKb, messages: [{ role: 'user', content: message }] }) });
+            if (!response.ok) throw new Error((await response.json()).detail || '聊天请求失败');
+            const reader = response.body.getReader(); const decoder = new TextDecoder(); let buffer = '';
+            while (true) {
+              const chunk = await reader.read(); if (chunk.done) break;
+              buffer += decoder.decode(chunk.value, { stream: true }); const events = buffer.split('\n\n'); buffer = events.pop() || '';
+              for (const raw of events) {
+                const line = raw.split('\n').find((item) => item.startsWith('data:'));
+                if (!line) continue;
+                const payload = JSON.parse(line.slice(5));
+                if (payload.event === 'token' && payload.content) { state.chatMessages[state.chatMessages.length - 1].text += payload.content; if (output) output.textContent += payload.content; }
+              }
+            }
+            showToast('Agent 已完成一次真实 SSE 回复', 'success');
+          } catch (error) { state.chatMessages[state.chatMessages.length - 1].text = error.message; if (output) output.textContent = error.message; showToast(error.message, 'info'); }
+          return;
+        }
+        if (form.dataset.form === 'new-doc') {
+          const file = form.querySelector('input[type="file"]').files[0];
+          if (!file) return;
+          const body = new FormData(); body.append('file', file); body.append('knowledge_base_id', data.kb); body.append('category', data.category); if (String(data.title || '').trim()) body.append('title', String(data.title).trim());
+          try { await api('/api/v1/admin/documents/upload', { method: 'POST', body }); document.querySelector('#modal-root').innerHTML = ''; await hydrateState(); showToast('文档已上传，已进入服务端文档列表', 'success'); } catch (error) { showToast(error.message, 'info'); } return;
+        }
+        if (form.dataset.form === 'new-kb') {
+          try { await api('/api/v1/admin/knowledge-bases', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ knowledge_base_id: data.id.trim(), tenant_id: data.tenant, name: data.name, description: data.description }) }); document.querySelector('#modal-root').innerHTML = ''; await hydrateState(); showToast('知识库已创建', 'success'); } catch (error) { showToast(error.message, 'info'); } return;
+        }
+        if (form.dataset.form === 'edit-tenant') {
+          try { await api(`/api/v1/admin/tenants/${encodeURIComponent(data.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ default_knowledge_base_id: data.defaultKb, plan: data.plan, enabled: data.status !== '停用' }) }); document.querySelector('#modal-root').innerHTML = ''; await hydrateState(); showToast('租户配置已保存', 'success'); } catch (error) { showToast(error.message, 'info'); } return;
+        }
+        if (form.dataset.form === 'runtime') {
+          try { await api('/api/v1/admin/runtime', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model_provider: data.provider, model_name: data.model, model_base_url: data.baseUrl, request_timeout_seconds: Number(data.timeout), rag_top_k: Number(data.topK), rate_limit_requests: state.runtime.rate }) }); await hydrateState(); showToast('运行配置已保存到服务端内存', 'success'); } catch (error) { showToast(error.message, 'info'); } return;
+        }
+      }
+
+      document.addEventListener('click', async (event) => {
+        const target = event.target.closest('[data-view]');
+        if (target) { state.view = target.dataset.view; renderApp(); return; }
+        const filter = event.target.closest('[data-kb-filter]');
+        if (filter) { state.kbFilter = filter.dataset.kbFilter; renderApp(); return; }
+        const actionTarget = event.target.closest('[data-action]');
+        if (!actionTarget) return;
+        const action = actionTarget.dataset.action;
+        if (action === 'close-modal' || (action === 'close-modal' && event.target === actionTarget)) { document.querySelector('#modal-root').innerHTML = ''; return; }
+        if (action === 'notifications') { showToast('当前没有新的系统通知', 'info'); return; }
+        if (action === 'refresh') { showToast('数据已刷新', 'success'); return; }
+        if (action === 'new-doc') { openNewDocument(); return; }
+        if (action === 'new-kb') { openNewKb(); return; }
+        if (action === 'new-tenant') { showToast('租户创建流程将在后续版本接入', 'info'); return; }
+        if (action === 'open-doc') { openDocument(actionTarget.dataset.doc); return; }
+        if (action === 'delete-doc') { const doc = state.documents.find((item) => item.id === actionTarget.dataset.doc); if (!doc) return; try { await api(`/api/v1/admin/documents/${encodeURIComponent(doc.kb)}/${encodeURIComponent(doc.id)}`, { method: 'DELETE' }); document.querySelector('#modal-root').innerHTML = ''; await hydrateState(); showToast('文档已删除', 'success'); } catch (error) { showToast(error.message, 'info'); } return; }
+        if (action === 'select-kb') { state.selectedKb = actionTarget.dataset.kb; renderApp(); return; }
+        if (action === 'toggle-kb') { const kb = kbById(actionTarget.dataset.kb); if (!kb) return; try { await api(`/api/v1/admin/knowledge-bases/${encodeURIComponent(kb.id)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ enabled: kb.status !== '启用' }) }); await hydrateState(); showToast('知识库状态已切换', 'success'); } catch (error) { showToast(error.message, 'info'); } return; }
+        if (action === 'edit-kb') { showToast('知识库编辑面板将在下一轮接入', 'info'); return; }
+        if (action === 'edit-tenant') { openEditTenant(actionTarget.dataset.tenant); return; }
+        if (action === 'save-tenant') { const form = document.querySelector('[data-form="edit-tenant"]'); if (form) handleFormSubmit(form); return; }
+        if (action === 'submit-new-doc') { const form = document.querySelector('[data-form="new-doc"]'); if (form && form.reportValidity()) handleFormSubmit(form); return; }
+        if (action === 'submit-new-kb') { const form = document.querySelector('[data-form="new-kb"]'); if (form && form.reportValidity()) handleFormSubmit(form); return; }
+        if (action === 'save-runtime') { const form = document.querySelector('[data-form="runtime"]'); if (form) handleFormSubmit(form); return; }
+        if (action === 'reset-runtime') { try { await api('/api/v1/admin/runtime', { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ model_provider: 'mock', model_name: 'insurance-agent-demo', model_base_url: 'https://api.openai.com/v1', model_timeout_seconds: 45, model_max_retries: 2, request_timeout_seconds: 60, rag_top_k: 4, rate_limit_requests: 60, rate_limit_window_seconds: 60 }) }); await hydrateState(); showToast('已恢复默认运行配置', 'info'); } catch (error) { showToast(error.message, 'info'); } return; }
+        if (action === 'clear-chat') { state.chatMessages = []; renderApp(); return; }
+        if (action === 'new-chat') { state.chatMessages = [{ role: 'assistant', text: '新的演示会话已创建。请输入客户问题。', time: '刚刚' }]; renderApp(); return; }
+        if (action === 'batch-index') { showToast('已创建批量索引任务，状态可在活动记录查看', 'success'); return; }
+        if (action === 'import-kb' || action === 'export-tenants') { showToast('原型中已模拟该操作', 'info'); return; }
+      });
+
+      document.addEventListener('submit', (event) => { event.preventDefault(); void handleFormSubmit(event.target); });
+      renderApp();
+      hydrateState().catch((error) => { showToast(`服务端数据加载失败，暂使用原型数据：${error.message}`, 'info'); });
+    </script>
+  </body>
+</html>
