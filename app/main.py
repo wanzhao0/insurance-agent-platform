@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import Response
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.api.router import api_router
 from app.bootstrap.container import build_container
@@ -17,6 +18,20 @@ from app.core.middleware import RequestContextMiddleware
 settings = get_settings()
 configure_logging(settings.log_level)
 logger = get_logger(__name__)
+
+
+class SPAStaticFiles(StaticFiles):
+    """Serve the Vue entry point for client-side routes on direct navigation."""
+
+    async def get_response(self, path: str, scope):
+        try:
+            return await super().get_response(path, scope)
+        except StarletteHTTPException as exc:
+            if exc.status_code != 404 or scope["method"] not in {"GET", "HEAD"}:
+                raise
+            if Path(path).name.count("."):
+                raise
+            return await super().get_response("index.html", scope)
 
 
 @asynccontextmanager
@@ -58,4 +73,5 @@ async def favicon() -> Response:
 static_dir = Path(__file__).parent / "static"
 frontend_dir = static_dir / "frontend"
 app.mount("/prototype", StaticFiles(directory=static_dir / "prototype", html=True), name="legacy-prototype")
-app.mount("/", StaticFiles(directory=frontend_dir if frontend_dir.exists() else static_dir, html=True), name="frontend")
+frontend_static = SPAStaticFiles(directory=frontend_dir if frontend_dir.exists() else static_dir, html=True)
+app.mount("/", frontend_static, name="frontend")

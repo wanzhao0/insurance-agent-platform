@@ -15,6 +15,8 @@ def test_health_and_public_config() -> None:
         prototype = client.get("/prototype/")
         assert prototype.status_code == 200
         assert "保险 Agent 平台原型" in prototype.text
+        assert client.get("/knowledge").status_code == 200
+        assert client.get("/chat").status_code == 200
         config = client.get("/api/v1/config/public").json()
         assert config["model_provider"] == "mock"
         assert "model_api_key" not in config
