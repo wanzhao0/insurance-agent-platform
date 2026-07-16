@@ -101,7 +101,7 @@ class RagService:
 
     async def startup(self) -> None:
         reset = getattr(self.vector_store, "reset", None)
-        if reset is not None:
+        if self.settings.rag_rebuild_on_startup and reset is not None:
             await reset()
         for document in self.knowledge_base_service.list_all_documents():
             await self.index_document(document)

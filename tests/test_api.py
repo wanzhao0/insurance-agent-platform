@@ -2,6 +2,7 @@ import json
 import os
 
 os.environ.setdefault("AGENT_VECTOR_STORE_PROVIDER", "memory")
+os.environ.setdefault("AGENT_PERSISTENCE_PROVIDER", "memory")
 
 from fastapi.testclient import TestClient
 
@@ -132,3 +133,27 @@ def test_unsupported_upload_format_is_rejected() -> None:
             files={"file": ("legacy.doc", b"not a supported parser", "application/msword")},
         )
         assert response.status_code == 415
+
+
+def test_auth_tools_metrics_and_public_boundaries() -> None:
+    with TestClient(app) as client:
+        login = client.post("/api/v1/auth/login", json={"username": "admin", "password": "change-me"})
+        assert login.status_code == 200
+        token = login.json()["access_token"]
+        assert token == "local-session"
+
+        me = client.get("/api/v1/auth/me", headers={"Authorization": f"Bearer {token}"})
+        assert me.status_code == 200
+        assert me.json()["role"] == "admin"
+
+        tools = client.get("/api/v1/tools")
+        assert tools.status_code == 200
+        assert {item["name"] for item in tools.json()} == {
+            "search_knowledge_base",
+            "policy_lookup",
+            "handoff_to_human",
+        }
+
+        metrics = client.get("/api/v1/metrics")
+        assert metrics.status_code == 200
+        assert "agent_http_requests_total" in metrics.text

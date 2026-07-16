@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from typing import Any
 
 from app.domain.models import (
     DocumentCreate,
@@ -35,14 +36,45 @@ class TenantConfig:
 
 
 class KnowledgeBaseService:
-    def __init__(self, document_repository: DocumentRepository, vector_store: VectorStore) -> None:
+    def __init__(
+        self,
+        document_repository: DocumentRepository,
+        vector_store: VectorStore,
+        persistence: Any | None = None,
+    ) -> None:
         self.document_repository = document_repository
         self.vector_store = vector_store
+        self.persistence = persistence
         self._knowledge_bases: dict[str, KnowledgeBase] = {}
         self._tenants: dict[str, TenantConfig] = {}
+        if persistence is not None:
+            self._knowledge_bases = {
+                row["knowledge_base_id"]: KnowledgeBase(
+                    knowledge_base_id=row["knowledge_base_id"],
+                    tenant_id=row["tenant_id"],
+                    name=row["name"],
+                    description=row["description"],
+                    version=row["version"],
+                    enabled=row["enabled"],
+                )
+                for row in persistence.load_knowledge_bases()
+            }
+            self._tenants = {
+                row["tenant_id"]: TenantConfig(
+                    tenant_id=row["tenant_id"],
+                    name=row["name"],
+                    plan=row["plan"],
+                    default_knowledge_base_id=row["default_knowledge_base_id"],
+                    version=row["version"],
+                    enabled=row["enabled"],
+                    settings=row.get("settings") or {},
+                )
+                for row in persistence.load_tenants()
+            }
 
     def seed_defaults(self) -> None:
-        self._knowledge_bases.update(
+        if not self._knowledge_bases:
+            self._knowledge_bases.update(
             {
                 "insurance-general": KnowledgeBase(
                     knowledge_base_id="insurance-general",
@@ -72,9 +104,10 @@ class KnowledgeBaseService:
                     version=2,
                     enabled=False,
                 ),
-            }
-        )
-        self._tenants.update(
+                }
+            )
+        if not self._tenants:
+            self._tenants.update(
             {
                 "demo": TenantConfig(
                     tenant_id="demo",
@@ -96,8 +129,9 @@ class KnowledgeBaseService:
                     default_knowledge_base_id="health-products",
                     enabled=False,
                 ),
-            }
-        )
+                }
+            )
+        self._persist_configuration()
         self.add_document(
             "insurance-general",
             DocumentCreate(
@@ -181,6 +215,7 @@ class KnowledgeBaseService:
         if "settings" in updates:
             tenant.settings = updates["settings"]
         tenant.version += 1
+        self._persist_tenant(tenant)
         return next(item for item in self.list_tenants() if item.tenant_id == tenant_id)
 
     def list_for_tenant(self, tenant_id: str) -> list[KnowledgeBaseResponse]:
@@ -218,6 +253,7 @@ class KnowledgeBaseService:
         if payload.tenant_id not in self._tenants:
             raise ValueError("tenant not found")
         self._knowledge_bases[payload.knowledge_base_id] = KnowledgeBase(**payload.model_dump())
+        self._persist_knowledge_base(self._knowledge_bases[payload.knowledge_base_id])
         return next(item for item in self.list_all() if item.knowledge_base_id == payload.knowledge_base_id)
 
     def update_knowledge_base(self, knowledge_base_id: str, payload: KnowledgeBaseUpdate) -> KnowledgeBaseResponse:
@@ -227,6 +263,7 @@ class KnowledgeBaseService:
         for field, value in payload.model_dump(exclude_unset=True).items():
             setattr(knowledge_base, field, value)
         knowledge_base.version += 1
+        self._persist_knowledge_base(knowledge_base)
         return next(item for item in self.list_all() if item.knowledge_base_id == knowledge_base_id)
 
     def resolve_knowledge_base(self, tenant_id: str, knowledge_base_id: str | None) -> str:
@@ -257,3 +294,36 @@ class KnowledgeBaseService:
 
     def delete_document(self, knowledge_base_id: str, document_id: str) -> bool:
         return self.document_repository.delete(knowledge_base_id, document_id)
+
+    def _persist_configuration(self) -> None:
+        for tenant in self._tenants.values():
+            self._persist_tenant(tenant)
+        for knowledge_base in self._knowledge_bases.values():
+            self._persist_knowledge_base(knowledge_base)
+
+    def _persist_tenant(self, tenant: TenantConfig) -> None:
+        if self.persistence is not None:
+            self.persistence.save_tenant(
+                {
+                    "tenant_id": tenant.tenant_id,
+                    "name": tenant.name,
+                    "plan": tenant.plan,
+                    "default_knowledge_base_id": tenant.default_knowledge_base_id,
+                    "version": tenant.version,
+                    "enabled": tenant.enabled,
+                    "settings": tenant.settings or {},
+                }
+            )
+
+    def _persist_knowledge_base(self, knowledge_base: KnowledgeBase) -> None:
+        if self.persistence is not None:
+            self.persistence.save_knowledge_base(
+                {
+                    "knowledge_base_id": knowledge_base.knowledge_base_id,
+                    "tenant_id": knowledge_base.tenant_id,
+                    "name": knowledge_base.name,
+                    "description": knowledge_base.description,
+                    "version": knowledge_base.version,
+                    "enabled": knowledge_base.enabled,
+                }
+            )

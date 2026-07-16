@@ -2,11 +2,13 @@ import asyncio
 import json
 from collections.abc import AsyncIterator
 
-from fastapi import APIRouter, HTTPException, Request, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from fastapi.responses import StreamingResponse
 
 from app.core.request_context import get_request_id
-from app.domain.models import ChatRequest
+from app.core.metrics import CHAT_TURNS, TOOL_CALLS
+from app.api.dependencies import assert_tenant_access, get_current_user
+from app.domain.models import ChatRequest, UserContext
 
 
 router = APIRouter()
@@ -17,8 +19,14 @@ def sse_event(event: str, payload: dict) -> str:
 
 
 @router.post("/stream")
-async def stream_chat(payload: ChatRequest, request: Request) -> StreamingResponse:
+async def stream_chat(
+    payload: ChatRequest,
+    request: Request,
+    user: UserContext = Depends(get_current_user),
+) -> StreamingResponse:
     container = request.app.state.container
+    assert_tenant_access(user, payload.tenant_id)
+    CHAT_TURNS.labels(payload.tenant_id).inc()
     try:
         context = container.chat_service.prepare(payload)
     except ValueError as exc:
@@ -34,6 +42,8 @@ async def stream_chat(payload: ChatRequest, request: Request) -> StreamingRespon
             yield sse_event("start", {"request_id": request_id, "conversation_id": context.conversation_id})
             async with asyncio.timeout(container.settings.request_timeout_seconds):
                 async for event in container.chat_service.stream(context):
+                    if event.event == "tool_call" and event.tool_name:
+                        TOOL_CALLS.labels(event.tool_name).inc()
                     yield sse_event(event.event, event.model_dump(mode="json"))
             yield sse_event("done", {"request_id": request_id})
         except TimeoutError:

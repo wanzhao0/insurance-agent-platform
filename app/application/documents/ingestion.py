@@ -31,6 +31,7 @@ class DocumentIngestionService:
         ".json",
         ".pdf",
         ".docx",
+        ".pptx",
         ".xlsx",
         ".xlsm",
         ".xls",
@@ -66,6 +67,9 @@ class DocumentIngestionService:
                 content, paragraphs, tables = self._parse_docx(payload)
                 metadata["paragraph_count"] = paragraphs
                 metadata["table_count"] = tables
+            elif extension == ".pptx":
+                content, slides = self._parse_pptx(payload)
+                metadata["slide_count"] = slides
             else:
                 content, sheets = self._parse_excel(payload, extension)
                 metadata["sheet_count"] = sheets
@@ -101,6 +105,18 @@ class DocumentIngestionService:
             if rows:
                 parts.append(f"[表格 {table_index}]\n" + "\n".join(rows))
         return "\n\n".join(parts), len(document.paragraphs), len(document.tables)
+
+    @staticmethod
+    def _parse_pptx(payload: bytes) -> tuple[str, int]:
+        from pptx import Presentation
+
+        presentation = Presentation(BytesIO(payload))
+        slides: list[str] = []
+        for slide_index, slide in enumerate(presentation.slides, 1):
+            texts = [shape.text.strip() for shape in slide.shapes if hasattr(shape, "text") and shape.text.strip()]
+            if texts:
+                slides.append(f"[第 {slide_index} 页]\n" + "\n".join(texts))
+        return "\n\n".join(slides), len(presentation.slides)
 
     @staticmethod
     def _parse_excel(payload: bytes, extension: str) -> tuple[str, int]:

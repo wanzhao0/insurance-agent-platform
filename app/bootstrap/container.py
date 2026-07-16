@@ -1,6 +1,8 @@
 from dataclasses import dataclass
 
 from app.application.agent.registry import ToolRegistry
+from app.application.agent.business_tools import HandoffTool, PolicyLookupTool
+from app.application.auth.service import AuthService
 from app.application.chat.service import ChatService
 from app.application.evaluation.service import EvaluationService
 from app.application.knowledge.service import KnowledgeBaseService
@@ -12,21 +14,37 @@ from app.infrastructure.knowledge.in_memory import InMemoryDocumentRepository
 from app.infrastructure.embeddings.factory import build_embedding_client
 from app.infrastructure.model_clients.factory import build_model_client
 from app.infrastructure.rate_limit.memory import InMemoryRateLimiter
+from app.infrastructure.rate_limit.redis import RedisRateLimiter
+from app.infrastructure.tasks.factory import build_task_queue
 from app.infrastructure.vector.in_memory import InMemoryVectorStore
 from app.infrastructure.vector.qdrant import QdrantVectorStore
+from app.infrastructure.persistence.sqlalchemy import (
+    SqlAlchemyAuditRepository,
+    SqlAlchemyConversationRepository,
+    SqlAlchemyDatabase,
+    SqlAlchemyDocumentRepository,
+    SqlAlchemyHandoffRepository,
+    SqlAlchemyKnowledgeStore,
+)
 
 
 @dataclass
 class AppContainer:
     settings: Settings
-    document_repository: InMemoryDocumentRepository
+    auth_service: AuthService
+    document_repository: object
     vector_store: object
+    database: SqlAlchemyDatabase | None
     knowledge_base_service: KnowledgeBaseService
     rag_service: RagService
     tool_registry: ToolRegistry
     chat_service: ChatService
     evaluation_service: EvaluationService
-    rate_limiter: InMemoryRateLimiter
+    rate_limiter: object
+    task_queue: object
+    conversation_repository: object | None = None
+    audit_repository: object | None = None
+    handoff_repository: object | None = None
 
     @property
     def logger(self):
@@ -44,8 +62,16 @@ class AppContainer:
         close_embedding = getattr(self.rag_service.embedding_client, "close", None)
         if close_embedding is not None:
             await close_embedding()
+        if self.database is not None:
+            self.database.close()
+        for resource in (self.rate_limiter, self.task_queue):
+            close = getattr(resource, "close", None)
+            if close is not None:
+                await close()
 
     async def healthcheck(self) -> None:
+        if self.database is not None:
+            self.database.healthcheck()
         await self.chat_service.healthcheck()
 
     def public_config(self) -> PublicConfigResponse:
@@ -100,34 +126,79 @@ class AppContainer:
 
 
 def build_container(settings: Settings) -> AppContainer:
-    document_repository = InMemoryDocumentRepository()
+    database = None
+    persistence = None
+    conversation_repository = None
+    audit_repository = None
+    handoff_repository = None
+    if settings.persistence_provider.lower() in {"sqlalchemy", "database", "postgres", "sqlite"}:
+        database = SqlAlchemyDatabase(
+            settings.database_url,
+            settings.database_echo,
+            settings.database_auto_create,
+        )
+        document_repository = SqlAlchemyDocumentRepository(database)
+        persistence = SqlAlchemyKnowledgeStore(database)
+        conversation_repository = SqlAlchemyConversationRepository(database)
+        audit_repository = SqlAlchemyAuditRepository(database)
+        handoff_repository = SqlAlchemyHandoffRepository(database)
+    else:
+        document_repository = InMemoryDocumentRepository()
     if settings.vector_store_provider.lower() in {"memory", "in-memory"}:
         vector_store = InMemoryVectorStore(document_repository)
     else:
-        vector_store = QdrantVectorStore(settings.vector_db_path, settings.embedding_dimension)
-    knowledge_base_service = KnowledgeBaseService(document_repository, vector_store)
+        vector_store = QdrantVectorStore(
+            settings.vector_db_path,
+            settings.embedding_dimension,
+            settings.vector_db_url,
+            settings.vector_db_api_key.get_secret_value() if settings.vector_db_api_key else None,
+        )
+    knowledge_base_service = KnowledgeBaseService(document_repository, vector_store, persistence)
     knowledge_base_service.seed_defaults()
     embedding_client = build_embedding_client(settings)
     rag_service = RagService(knowledge_base_service, vector_store, embedding_client, settings)
     tool_registry = ToolRegistry()
     tool_registry.register(rag_service.as_tool())
+    tool_registry.register(PolicyLookupTool(rag_service))
+    tool_registry.register(HandoffTool(handoff_repository))
     model_client = build_model_client(settings)
-    chat_service = ChatService(settings, model_client, knowledge_base_service, rag_service, tool_registry)
+    chat_service = ChatService(
+        settings,
+        model_client,
+        knowledge_base_service,
+        rag_service,
+        tool_registry,
+        conversation_repository,
+    )
     evaluation_service = EvaluationService(
         chat_service,
         rag_service,
         knowledge_base_service,
         lambda: chat_service.model_client,
     )
-    rate_limiter = InMemoryRateLimiter(settings.rate_limit_requests, settings.rate_limit_window_seconds)
+    if settings.rate_limiter_provider.lower() == "redis":
+        if not settings.redis_url:
+            raise ValueError("AGENT_REDIS_URL is required when AGENT_RATE_LIMITER_PROVIDER=redis")
+        rate_limiter = RedisRateLimiter(
+            settings.redis_url, settings.rate_limit_requests, settings.rate_limit_window_seconds
+        )
+    else:
+        rate_limiter = InMemoryRateLimiter(settings.rate_limit_requests, settings.rate_limit_window_seconds)
+    task_queue = build_task_queue(settings)
     return AppContainer(
         settings=settings,
+        auth_service=AuthService(settings),
         document_repository=document_repository,
         vector_store=vector_store,
+        database=database,
         knowledge_base_service=knowledge_base_service,
         rag_service=rag_service,
         tool_registry=tool_registry,
         chat_service=chat_service,
         evaluation_service=evaluation_service,
         rate_limiter=rate_limiter,
+        task_queue=task_queue,
+        conversation_repository=conversation_repository,
+        audit_repository=audit_repository,
+        handoff_repository=handoff_repository,
     )

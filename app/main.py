@@ -56,4 +56,6 @@ async def favicon() -> Response:
     return Response(status_code=204)
 
 static_dir = Path(__file__).parent / "static"
-app.mount("/", StaticFiles(directory=static_dir, html=True), name="frontend")
+frontend_dir = static_dir / "frontend"
+app.mount("/prototype", StaticFiles(directory=static_dir / "prototype", html=True), name="legacy-prototype")
+app.mount("/", StaticFiles(directory=frontend_dir if frontend_dir.exists() else static_dir, html=True), name="frontend")

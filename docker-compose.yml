@@ -1,0 +1,91 @@
+services:
+  api:
+    build: .
+    environment:
+      AGENT_ENV: production
+      AGENT_DATABASE_URL: postgresql+psycopg://agent:agent@postgres:5432/agent
+      AGENT_DATABASE_AUTO_CREATE: "false"
+      AGENT_REDIS_URL: redis://redis:6379/0
+      AGENT_TASK_QUEUE: redis
+      AGENT_RATE_LIMITER_PROVIDER: redis
+      AGENT_VECTOR_STORE_PROVIDER: qdrant-http
+      AGENT_VECTOR_DB_URL: http://qdrant:6333
+      AGENT_RAG_REBUILD_ON_STARTUP: "false"
+      AGENT_JWT_SECRET: ${AGENT_JWT_SECRET:?set AGENT_JWT_SECRET}
+      AGENT_ADMIN_TOKEN: ${AGENT_ADMIN_TOKEN:?set AGENT_ADMIN_TOKEN}
+      AGENT_MODEL_PROVIDER: ${AGENT_MODEL_PROVIDER:-mock}
+      AGENT_MODEL_NAME: ${AGENT_MODEL_NAME:-insurance-agent-demo}
+      AGENT_MODEL_BASE_URL: ${AGENT_MODEL_BASE_URL:-https://api.openai.com/v1}
+      AGENT_MODEL_API_KEY: ${AGENT_MODEL_API_KEY:-}
+    ports:
+      - "8000:8000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      qdrant:
+        condition: service_started
+    restart: unless-stopped
+
+  worker:
+    build: .
+    command: ["python", "-m", "app.worker"]
+    environment:
+      AGENT_ENV: production
+      AGENT_DATABASE_URL: postgresql+psycopg://agent:agent@postgres:5432/agent
+      AGENT_DATABASE_AUTO_CREATE: "false"
+      AGENT_REDIS_URL: redis://redis:6379/0
+      AGENT_TASK_QUEUE: redis
+      AGENT_RATE_LIMITER_PROVIDER: redis
+      AGENT_VECTOR_STORE_PROVIDER: qdrant-http
+      AGENT_VECTOR_DB_URL: http://qdrant:6333
+      AGENT_RAG_REBUILD_ON_STARTUP: "false"
+      AGENT_JWT_SECRET: ${AGENT_JWT_SECRET:?set AGENT_JWT_SECRET}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      qdrant:
+        condition: service_started
+    restart: unless-stopped
+
+  migrate:
+    build: .
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      AGENT_DATABASE_URL: postgresql+psycopg://agent:agent@postgres:5432/agent
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_DB: agent
+      POSTGRES_USER: agent
+      POSTGRES_PASSWORD: agent
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U agent -d agent"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:8-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+
+  qdrant:
+    image: qdrant/qdrant:v1.15.5
+    volumes:
+      - qdrant-data:/qdrant/storage
+
+volumes:
+  postgres-data:
+  redis-data:
+  qdrant-data:

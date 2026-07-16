@@ -25,7 +25,13 @@ async def add_document(knowledge_base_id: str, payload: DocumentCreate, request:
     if container.knowledge_base_service.get(knowledge_base_id) is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="knowledge base not found")
     document = container.knowledge_base_service.add_document(knowledge_base_id, payload)
-    await container.rag_service.index_document(document)
+    if container.settings.task_queue.lower() == "redis":
+        await container.task_queue.enqueue(
+            "index_document",
+            {"knowledge_base_id": knowledge_base_id, "document_id": document.document_id},
+        )
+    else:
+        await container.rag_service.index_document(document)
     return document
 
 

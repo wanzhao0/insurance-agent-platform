@@ -10,6 +10,61 @@ class HealthResponse(BaseModel):
     service: str
 
 
+class LoginRequest(BaseModel):
+    username: str = Field(min_length=1, max_length=100)
+    password: str = Field(min_length=1, max_length=200)
+
+
+class TokenResponse(BaseModel):
+    access_token: str
+    token_type: Literal["bearer"] = "bearer"
+    expires_in: int
+    user: "UserContext"
+
+
+class UserContext(BaseModel):
+    user_id: str
+    username: str
+    role: Literal["admin", "operator", "viewer"]
+    tenant_ids: list[str] = Field(default_factory=list)
+
+
+class AuditLogResponse(BaseModel):
+    audit_id: str
+    actor_id: str
+    action: str
+    resource_type: str
+    resource_id: str | None = None
+    tenant_id: str | None = None
+    created_at: datetime
+
+
+class ConversationMessageResponse(BaseModel):
+    message_id: str
+    conversation_id: str
+    role: Literal["system", "user", "assistant", "tool"]
+    content: str | None
+    created_at: datetime
+
+
+class ConversationResponse(BaseModel):
+    conversation_id: str
+    tenant_id: str
+    knowledge_base_id: str
+    created_at: datetime
+    updated_at: datetime
+    messages: list[ConversationMessageResponse] = Field(default_factory=list)
+
+
+class HandoffTicketResponse(BaseModel):
+    ticket_id: str
+    tenant_id: str
+    conversation_id: str | None = None
+    reason: str
+    status: Literal["open", "assigned", "closed"] = "open"
+    created_at: datetime
+
+
 class PublicConfigResponse(BaseModel):
     app_name: str
     app_version: str
@@ -69,6 +124,7 @@ class ModelCompletion(BaseModel):
 
 
 ChatMessage.model_rebuild()
+TokenResponse.model_rebuild()
 
 
 class ChatRequest(BaseModel):
@@ -163,6 +219,8 @@ class AdminDocumentCreate(DocumentCreate):
 class DocumentUploadResponse(DocumentResponse):
     parser: str
     source_filename: str
+    index_status: Literal["ready", "queued"] = "ready"
+    task_id: str | None = None
 
 
 class AdminOverviewResponse(BaseModel):

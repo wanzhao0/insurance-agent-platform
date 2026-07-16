@@ -1,0 +1,7 @@
+.git
+.venv
+frontend/node_modules
+data
+__pycache__
+*.pyc
+.playwright-cli

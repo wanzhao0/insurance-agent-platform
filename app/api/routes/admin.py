@@ -53,7 +53,11 @@ async def list_tenants(request: Request) -> list[TenantSummaryResponse]:
 @router.patch("/tenants/{tenant_id}", response_model=TenantSummaryResponse)
 async def update_tenant(tenant_id: str, payload: TenantConfigUpdate, request: Request) -> TenantSummaryResponse:
     try:
-        return request.app.state.container.knowledge_base_service.update_tenant(tenant_id, payload)
+        result = request.app.state.container.knowledge_base_service.update_tenant(tenant_id, payload)
+        audit = request.app.state.container.audit_repository
+        if audit is not None:
+            audit.record("admin", "tenant.update", "tenant", tenant_id, tenant_id)
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -66,7 +70,11 @@ async def list_all_knowledge_bases(request: Request) -> list[KnowledgeBaseRespon
 @router.post("/knowledge-bases", response_model=KnowledgeBaseResponse, status_code=status.HTTP_201_CREATED)
 async def create_knowledge_base(payload: KnowledgeBaseCreate, request: Request) -> KnowledgeBaseResponse:
     try:
-        return request.app.state.container.knowledge_base_service.create_knowledge_base(payload)
+        result = request.app.state.container.knowledge_base_service.create_knowledge_base(payload)
+        audit = request.app.state.container.audit_repository
+        if audit is not None:
+            audit.record("admin", "knowledge_base.create", "knowledge_base", payload.knowledge_base_id, payload.tenant_id)
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -78,7 +86,11 @@ async def update_knowledge_base(
     request: Request,
 ) -> KnowledgeBaseResponse:
     try:
-        return request.app.state.container.knowledge_base_service.update_knowledge_base(knowledge_base_id, payload)
+        result = request.app.state.container.knowledge_base_service.update_knowledge_base(knowledge_base_id, payload)
+        audit = request.app.state.container.audit_repository
+        if audit is not None:
+            audit.record("admin", "knowledge_base.update", "knowledge_base", knowledge_base_id)
+        return result
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc
 
@@ -119,11 +131,27 @@ async def upload_document(
             metadata={**parsed.metadata, "category": category},
         ),
     )
-    await container.rag_service.index_document(document)
+    index_status = "ready"
+    task_id = None
+    if container.settings.task_queue.lower() == "redis":
+        task_id = await container.task_queue.enqueue(
+            "index_document",
+            {"knowledge_base_id": knowledge_base_id, "document_id": document.document_id},
+        )
+        index_status = "queued"
+    else:
+        await container.rag_service.index_document(document)
+    if container.audit_repository is not None:
+        container.audit_repository.record(
+            "admin", "document.upload", "document", document.document_id, knowledge_base_id,
+            {"filename": file.filename, "parser": parsed.metadata["parser"]},
+        )
     return DocumentUploadResponse(
         **document.model_dump(),
         parser=parsed.metadata["parser"],
         source_filename=parsed.metadata["source_filename"],
+        index_status=index_status,
+        task_id=task_id,
     )
 
 
@@ -134,6 +162,8 @@ async def delete_document(knowledge_base_id: str, document_id: str, request: Req
     if not deleted:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="document not found")
     await container.rag_service.delete_document(knowledge_base_id, document_id)
+    if container.audit_repository is not None:
+        container.audit_repository.record("admin", "document.delete", "document", document_id, knowledge_base_id)
 
 
 @router.get("/runtime", response_model=RuntimeConfigResponse)

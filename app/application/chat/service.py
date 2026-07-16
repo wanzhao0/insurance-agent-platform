@@ -35,12 +35,14 @@ class ChatService:
         knowledge_base_service: KnowledgeBaseService,
         rag_service: RagService,
         tool_registry: ToolRegistry,
+        conversation_repository=None,
     ) -> None:
         self.settings = settings
         self.model_client = model_client
         self.knowledge_base_service = knowledge_base_service
         self.rag_service = rag_service
         self.tool_registry = tool_registry
+        self.conversation_repository = conversation_repository
         self.agent_orchestrator = AgentOrchestrator(lambda: self.model_client, tool_registry)
         self.logger = get_logger(__name__)
 
@@ -72,6 +74,25 @@ class ChatService:
 
     async def stream(self, context: ChatContext) -> AsyncIterator[StreamEvent]:
         state = await self.agent_orchestrator.run(context)
+        if self.conversation_repository is not None:
+            latest_user = next(
+                (message.content for message in reversed(context.request.messages) if message.role == "user"),
+                None,
+            )
+            self.conversation_repository.save_turn(
+                context.conversation_id,
+                context.request.tenant_id,
+                context.knowledge_base_id,
+                "user",
+                latest_user,
+            )
+            self.conversation_repository.save_turn(
+                context.conversation_id,
+                context.request.tenant_id,
+                context.knowledge_base_id,
+                "assistant",
+                state.answer,
+            )
         for call in state.tool_calls:
             yield StreamEvent(event="tool_call", tool_name=call.name, tool_call_id=call.call_id)
         emitted = 0

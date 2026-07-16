@@ -21,11 +21,20 @@ class QdrantVectorStore:
 
     collection_name = "knowledge_documents"
 
-    def __init__(self, path: str, dimension: int) -> None:
+    def __init__(
+        self,
+        path: str,
+        dimension: int,
+        url: str | None = None,
+        api_key: str | None = None,
+    ) -> None:
         self.path = Path(path)
-        self.path.parent.mkdir(parents=True, exist_ok=True)
         self.dimension = dimension
-        self.client = QdrantClient(path=str(self.path))
+        if url:
+            self.client = QdrantClient(url=url, api_key=api_key)
+        else:
+            self.path.parent.mkdir(parents=True, exist_ok=True)
+            self.client = QdrantClient(path=str(self.path))
         self._ensure_collection()
 
     def _ensure_collection(self) -> None:

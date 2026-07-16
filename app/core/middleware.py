@@ -6,6 +6,7 @@ from starlette.requests import Request
 from starlette.responses import Response
 
 from app.core.logging import get_logger
+from app.core.metrics import REQUESTS, REQUEST_DURATION
 from app.core.request_context import request_id_context
 
 
@@ -17,6 +18,8 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
             response.headers["X-Request-ID"] = request_id
+            REQUESTS.labels(request.method, request.url.path, str(response.status_code)).inc()
+            REQUEST_DURATION.labels(request.method, request.url.path).observe(time.perf_counter() - started)
             get_logger("app.http").info(
                 "request_completed",
                 extra={

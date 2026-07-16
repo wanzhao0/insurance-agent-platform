@@ -39,6 +39,9 @@ class KnowledgeRetrievalAgent:
                 arguments = dict(call.arguments)
                 # Tenant scoping is owned by the server, never by model output.
                 arguments["knowledge_base_id"] = state.context.knowledge_base_id
+                if call.name == "handoff_to_human":
+                    arguments["tenant_id"] = state.context.request.tenant_id
+                    arguments["conversation_id"] = state.context.conversation_id
                 result = await self.tool_registry.invoke(call.name, arguments)
                 if isinstance(result, list) and all(isinstance(item, SearchResult) for item in result):
                     self._merge_results(state, result)

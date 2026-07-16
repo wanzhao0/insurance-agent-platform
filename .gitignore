@@ -12,3 +12,6 @@ build/
 .playwright-cli/
 output/playwright/
 data/
+frontend/node_modules/
+frontend/.env.*.local
+app/static/frontend/
