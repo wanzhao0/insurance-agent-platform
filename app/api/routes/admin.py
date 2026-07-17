@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile, status
 
 from app.api.dependencies import require_admin
@@ -118,7 +120,9 @@ async def upload_document(
             detail=f"file exceeds the {container.settings.max_upload_bytes} byte upload limit",
         )
     try:
-        parsed = ingestion_service.parse(file.filename or "uploaded-file", payload, file.content_type)
+        parsed = await asyncio.to_thread(
+            ingestion_service.parse, file.filename or "uploaded-file", payload, file.content_type
+        )
     except UnsupportedDocumentFormat as exc:
         raise HTTPException(status_code=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, detail=str(exc)) from exc
     except DocumentParseError as exc:

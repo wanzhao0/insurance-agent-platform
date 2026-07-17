@@ -37,8 +37,10 @@ async def require_admin(
     settings = request.app.state.container.settings
     if settings.admin_token is not None:
         expected = settings.admin_token.get_secret_value()
-        if x_admin_token is not None and secrets.compare_digest(x_admin_token, expected):
-            return
+        if x_admin_token is not None:
+            if secrets.compare_digest(x_admin_token, expected):
+                return
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="invalid admin token")
     if settings.environment.lower() == "local" and not authorization:
         return
     user = await get_current_user(request, authorization)

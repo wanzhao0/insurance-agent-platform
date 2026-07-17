@@ -71,7 +71,8 @@ class EvaluationService:
                 tenant_id=case.tenant_id,
                 knowledge_base_id=knowledge_base_id,
                 messages=[ChatMessage(role="user", content=case.query)],
-            )
+            ),
+            persist_conversation=False,
         )
         answer_parts: list[str] = []
         citations = []

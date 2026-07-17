@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 
@@ -6,6 +7,7 @@ os.environ.setdefault("AGENT_PERSISTENCE_PROVIDER", "memory")
 
 from fastapi.testclient import TestClient
 
+from app.domain.models import DocumentCreate
 from app.main import app
 
 
@@ -23,6 +25,9 @@ def test_health_and_public_config() -> None:
         tenant = client.get("/api/v1/config/tenants/demo")
         assert tenant.status_code == 200
         assert tenant.json()["default_knowledge_base_id"] == "insurance-general"
+        sandbox = client.get("/api/v1/config/tenants/sandbox")
+        assert sandbox.status_code == 200
+        assert sandbox.json()["default_knowledge_base_id"] == "sandbox-lab"
 
 
 def test_rag_and_sse_chat() -> None:
@@ -159,3 +164,64 @@ def test_auth_tools_metrics_and_public_boundaries() -> None:
         metrics = client.get("/api/v1/metrics")
         assert metrics.status_code == 200
         assert "agent_http_requests_total" in metrics.text
+
+
+def test_knowledge_routes_require_auth_outside_local_mode() -> None:
+    with TestClient(app) as client:
+        settings = app.state.container.settings
+        previous_environment = settings.environment
+        settings.environment = "production"
+        try:
+            search = client.post(
+                "/api/v1/knowledge-bases/insurance-general/search",
+                json={"query": "理赔材料"},
+            )
+            tenant = client.get("/api/v1/config/tenants/demo")
+            assert search.status_code == 401
+            assert tenant.status_code == 401
+        finally:
+            settings.environment = previous_environment
+
+
+def test_reindex_removes_stale_document_chunks() -> None:
+    with TestClient(app):
+        container = app.state.container
+        original = container.knowledge_base_service.add_document(
+            "insurance-general",
+            DocumentCreate(
+                document_id="mutable-document",
+                title="可更新文档",
+                content="旧内容。" * 200,
+            ),
+        )
+        asyncio.run(container.rag_service.index_document(original))
+        assert any(
+            key[1].startswith("mutable-document:chunk-")
+            for key in container.vector_store._documents
+        )
+
+        updated = container.knowledge_base_service.add_document(
+            "insurance-general",
+            DocumentCreate(
+                document_id="mutable-document",
+                title="可更新文档",
+                content="新内容。",
+            ),
+        )
+        asyncio.run(container.rag_service.index_document(updated))
+        assert ("insurance-general", "mutable-document") in container.vector_store._documents
+        assert not any(
+            key[1].startswith("mutable-document:chunk-")
+            for key in container.vector_store._documents
+        )
+
+
+def test_repeated_seed_does_not_increment_document_versions() -> None:
+    with TestClient(app):
+        service = app.state.container.knowledge_base_service
+        before = app.state.container.document_repository.get("insurance-general", "demo-claim")
+        assert before is not None
+        service.seed_defaults()
+        after = app.state.container.document_repository.get("insurance-general", "demo-claim")
+        assert after is not None
+        assert after.version == before.version

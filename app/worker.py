@@ -26,6 +26,7 @@ async def run() -> None:
                     await container.rag_service.index_document(document)
     finally:
         await container.shutdown()
+        await queue.close()
 
 
 if __name__ == "__main__":

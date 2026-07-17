@@ -65,6 +65,7 @@ class RagService:
 
     async def index_document(self, document: DocumentResponse) -> None:
         chunks = self._chunks(document.content)
+        indexed_chunks: list[tuple[DocumentResponse, list[float]]] = []
         for index, content in enumerate(chunks):
             chunk_id = document.document_id if len(chunks) == 1 else f"{document.document_id}:chunk-{index}"
             chunk = document.model_copy(
@@ -79,6 +80,11 @@ class RagService:
                 }
             )
             vector = await self.embedding_client.embed(f"{document.title}\n{content}")
+            indexed_chunks.append((chunk, vector))
+
+        # Keep the previous index intact if parsing or embedding fails before this point.
+        await self.vector_store.delete(document.knowledge_base_id, document.document_id)
+        for chunk, vector in indexed_chunks:
             await self.vector_store.upsert(document.knowledge_base_id, chunk, vector)
 
     @classmethod

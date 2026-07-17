@@ -25,6 +25,7 @@ class ChatContext:
     knowledge_base_id: str
     retrieved: list[SearchResult]
     prompt_messages: list[ChatMessage]
+    persist_conversation: bool
 
 
 class ChatService:
@@ -60,7 +61,7 @@ class ChatService:
     def replace_model_client(self, model_client: ModelClient) -> None:
         self.model_client = model_client
 
-    def prepare(self, request: ChatRequest) -> ChatContext:
+    def prepare(self, request: ChatRequest, *, persist_conversation: bool = True) -> ChatContext:
         knowledge_base_id = self.knowledge_base_service.resolve_knowledge_base(
             request.tenant_id, request.knowledge_base_id
         )
@@ -70,11 +71,12 @@ class ChatService:
             knowledge_base_id=knowledge_base_id,
             retrieved=[],
             prompt_messages=[ChatMessage(role="system", content=SYSTEM_PROMPT), *request.messages],
+            persist_conversation=persist_conversation,
         )
 
     async def stream(self, context: ChatContext) -> AsyncIterator[StreamEvent]:
         state = await self.agent_orchestrator.run(context)
-        if self.conversation_repository is not None:
+        if self.conversation_repository is not None and context.persist_conversation:
             latest_user = next(
                 (message.content for message in reversed(context.request.messages) if message.role == "user"),
                 None,

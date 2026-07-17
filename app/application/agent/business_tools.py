@@ -25,7 +25,12 @@ class PolicyLookupTool:
 
     async def invoke(self, arguments: dict[str, Any]) -> list[SearchResult]:
         results = await self.rag_service.search(arguments["knowledge_base_id"], arguments["query"])
-        return [result for result in results if result.metadata.get("category") in {"policy", "product"}]
+        policy_categories = {"policy", "product", "产品", "产品条款", "条款", "保障责任"}
+        return [
+            result
+            for result in results
+            if str(result.metadata.get("category", "")).strip().lower() in policy_categories
+        ]
 
 
 class HandoffTool:

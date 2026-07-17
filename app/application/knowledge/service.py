@@ -73,66 +73,84 @@ class KnowledgeBaseService:
             }
 
     def seed_defaults(self) -> None:
-        if not self._knowledge_bases:
-            self._knowledge_bases.update(
-            {
-                "insurance-general": KnowledgeBase(
-                    knowledge_base_id="insurance-general",
-                    tenant_id="demo",
-                    name="保险通用知识库",
-                    description="用于演示的保险产品、理赔和服务知识。",
-                ),
-                "motor-service": KnowledgeBase(
-                    knowledge_base_id="motor-service",
-                    tenant_id="demo",
-                    name="车险服务知识库",
-                    description="车险报案、事故处理和查勘定损指引。",
-                    version=4,
-                ),
-                "health-products": KnowledgeBase(
-                    knowledge_base_id="health-products",
-                    tenant_id="demo",
-                    name="健康险产品知识库",
-                    description="医疗险、重疾险产品说明和服务规则。",
-                    version=7,
-                ),
-                "partner-claims": KnowledgeBase(
-                    knowledge_base_id="partner-claims",
-                    tenant_id="partner-a",
-                    name="合作渠道理赔库",
-                    description="合作渠道专属服务和理赔材料。",
-                    version=2,
-                    enabled=False,
-                ),
-                }
+        default_knowledge_bases = {
+            "insurance-general": KnowledgeBase(
+                knowledge_base_id="insurance-general",
+                tenant_id="demo",
+                name="保险通用知识库",
+                description="用于演示的保险产品、理赔和服务知识。",
+            ),
+            "motor-service": KnowledgeBase(
+                knowledge_base_id="motor-service",
+                tenant_id="demo",
+                name="车险服务知识库",
+                description="车险报案、事故处理和查勘定损指引。",
+                version=4,
+            ),
+            "health-products": KnowledgeBase(
+                knowledge_base_id="health-products",
+                tenant_id="demo",
+                name="健康险产品知识库",
+                description="医疗险、重疾险产品说明和服务规则。",
+                version=7,
+            ),
+            "partner-claims": KnowledgeBase(
+                knowledge_base_id="partner-claims",
+                tenant_id="partner-a",
+                name="合作渠道理赔库",
+                description="合作渠道专属服务和理赔材料。",
+                version=2,
+                enabled=False,
+            ),
+            "sandbox-lab": KnowledgeBase(
+                knowledge_base_id="sandbox-lab",
+                tenant_id="sandbox",
+                name="产品测试知识库",
+                description="用于产品配置、提示词和检索策略验证。",
+                enabled=False,
+            ),
+        }
+        for knowledge_base_id, knowledge_base in default_knowledge_bases.items():
+            self._knowledge_bases.setdefault(knowledge_base_id, knowledge_base)
+
+        default_tenants = {
+            "demo": TenantConfig(
+                tenant_id="demo",
+                name="启明保险集团",
+                plan="企业版",
+                default_knowledge_base_id="insurance-general",
+                settings={"display_name": "演示租户", "locale": "zh-CN"},
+            ),
+            "partner-a": TenantConfig(
+                tenant_id="partner-a",
+                name="安顺渠道合作方",
+                plan="合作版",
+                default_knowledge_base_id="partner-claims",
+            ),
+            "sandbox": TenantConfig(
+                tenant_id="sandbox",
+                name="产品测试租户",
+                plan="沙箱",
+                default_knowledge_base_id="sandbox-lab",
+                enabled=False,
+            ),
+        }
+        for tenant_id, tenant in default_tenants.items():
+            self._tenants.setdefault(tenant_id, tenant)
+
+        for tenant in self._tenants.values():
+            configured_default = self._knowledge_bases.get(tenant.default_knowledge_base_id)
+            if configured_default is not None and configured_default.tenant_id == tenant.tenant_id:
+                continue
+            owned_knowledge_base = next(
+                (item for item in self._knowledge_bases.values() if item.tenant_id == tenant.tenant_id),
+                None,
             )
-        if not self._tenants:
-            self._tenants.update(
-            {
-                "demo": TenantConfig(
-                    tenant_id="demo",
-                    name="启明保险集团",
-                    plan="企业版",
-                    default_knowledge_base_id="insurance-general",
-                    settings={"display_name": "演示租户", "locale": "zh-CN"},
-                ),
-                "partner-a": TenantConfig(
-                    tenant_id="partner-a",
-                    name="安顺渠道合作方",
-                    plan="合作版",
-                    default_knowledge_base_id="partner-claims",
-                ),
-                "sandbox": TenantConfig(
-                    tenant_id="sandbox",
-                    name="产品测试租户",
-                    plan="沙箱",
-                    default_knowledge_base_id="health-products",
-                    enabled=False,
-                ),
-                }
-            )
+            if owned_knowledge_base is not None:
+                tenant.default_knowledge_base_id = owned_knowledge_base.knowledge_base_id
+                tenant.version += 1
         self._persist_configuration()
-        self.add_document(
+        self._seed_document(
             "insurance-general",
             DocumentCreate(
                 document_id="demo-claim",
@@ -141,7 +159,7 @@ class KnowledgeBaseService:
                 metadata={"category": "claims", "source": "demo"},
             ),
         )
-        self.add_document(
+        self._seed_document(
             "motor-service",
             DocumentCreate(
                 document_id="motor-claim",
@@ -150,7 +168,7 @@ class KnowledgeBaseService:
                 metadata={"category": "claims", "source": "demo"},
             ),
         )
-        self.add_document(
+        self._seed_document(
             "health-products",
             DocumentCreate(
                 document_id="health-reimburse",
@@ -159,7 +177,7 @@ class KnowledgeBaseService:
                 metadata={"category": "policy", "source": "demo"},
             ),
         )
-        self.add_document(
+        self._seed_document(
             "insurance-general",
             DocumentCreate(
                 document_id="demo-cooling-off",
@@ -294,6 +312,10 @@ class KnowledgeBaseService:
 
     def delete_document(self, knowledge_base_id: str, document_id: str) -> bool:
         return self.document_repository.delete(knowledge_base_id, document_id)
+
+    def _seed_document(self, knowledge_base_id: str, payload: DocumentCreate) -> None:
+        if self.document_repository.get(knowledge_base_id, payload.document_id) is None:
+            self.add_document(knowledge_base_id, payload)
 
     def _persist_configuration(self) -> None:
         for tenant in self._tenants.values():
