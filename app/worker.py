@@ -1,3 +1,9 @@
+"""异步任务消费者入口。
+
+Web API 只负责提交耗时任务；本模块在独立进程中消费队列，避免文档解析和建索引
+占用用户请求的连接与超时预算。
+"""
+
 import asyncio
 
 from prometheus_client import start_http_server
@@ -13,6 +19,7 @@ logger = get_logger(__name__)
 
 
 async def run() -> None:
+    """持续消费任务，并把执行状态写回任务仓库供后台查询。"""
     settings = get_settings()
     configure_logging(settings.log_level)
     if settings.metrics_enabled:
@@ -44,6 +51,7 @@ async def run() -> None:
                         payload["knowledge_base_id"],
                         payload["document_id"],
                     )
+                    # 入队后文档可能已被用户删除，不能继续为已不存在的内容建立索引。
                     if document is None:
                         raise ValueError("document no longer exists")
                     await container.rag_service.index_document(document)

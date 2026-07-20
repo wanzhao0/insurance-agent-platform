@@ -1,3 +1,5 @@
+"""Qdrant 向量库适配器，可连接本地目录或远程集群。"""
+
 import asyncio
 from pathlib import Path
 from uuid import NAMESPACE_URL, uuid5
@@ -17,7 +19,7 @@ from app.domain.models import DocumentResponse, SearchResult
 
 
 class QdrantVectorStore:
-    """Local Qdrant adapter; the same boundary can point at a remote Qdrant cluster later."""
+    """在统一集合中按知识库过滤向量，实现跨租户的物理数据隔离补充。"""
 
     collection_name = "knowledge_documents"
 
@@ -38,6 +40,10 @@ class QdrantVectorStore:
         self._ensure_collection()
 
     def _ensure_collection(self) -> None:
+        """保证集合维度与 Embedding 配置一致。
+
+        维度变更时旧向量不可比较，因此会重建集合；部署变更后必须重新索引全部文档。
+        """
         if self.client.collection_exists(self.collection_name):
             info = self.client.get_collection(self.collection_name)
             configured_size = getattr(getattr(info.config, "params", None), "size", None)
@@ -65,6 +71,7 @@ class QdrantVectorStore:
     async def upsert(
         self, knowledge_base_id: str, document: DocumentResponse, vector: list[float]
     ) -> None:
+        """按知识库和分块 ID 覆盖写入，使重复索引保持幂等。"""
         await asyncio.to_thread(
             self.client.upsert,
             collection_name=self.collection_name,
@@ -89,6 +96,7 @@ class QdrantVectorStore:
     async def search(
         self, knowledge_base_id: str, vector: list[float], top_k: int
     ) -> list[SearchResult]:
+        """只返回指定知识库的近邻结果，过滤条件不可由模型绕过。"""
         query_filter = Filter(
             must=[
                 FieldCondition(key="knowledge_base_id", match=MatchValue(value=knowledge_base_id))

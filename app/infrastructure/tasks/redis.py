@@ -1,3 +1,9 @@
+"""基于 Redis Streams 的可靠异步任务队列。
+
+消费者组会保留已读取但尚未确认的消息。这样 worker 崩溃后，其他 worker 可以认领
+超时任务，避免普通 list 队列中“取出即丢失”的风险。
+"""
+
 import json
 import socket
 import time
@@ -8,6 +14,8 @@ from redis.exceptions import ResponseError
 
 
 class RedisTaskQueue:
+    """提供入队、确认、重试和死信队列的任务端口实现。"""
+
     stream_name = "insurance-agent:tasks"
     dead_letter_stream = "insurance-agent:tasks:dead-letter"
     delayed_tasks = "insurance-agent:tasks:delayed"
@@ -19,6 +27,7 @@ class RedisTaskQueue:
         self._group_ready = False
 
     async def _ensure_group(self) -> None:
+        """惰性创建消费者组；多个 worker 同时启动时允许其中一个先创建成功。"""
         if self._group_ready:
             return
         try:
@@ -44,6 +53,11 @@ class RedisTaskQueue:
         return task_id
 
     async def dequeue(self, timeout: int = 5) -> dict | None:
+        """优先认领超时的未确认任务，再读取新任务。
+
+        ``XAUTOCLAIM`` 是故障恢复的关键：当某个 worker 在处理过程中退出，消息不会
+        永远停留在它的 pending 列表中。
+        """
         await self._ensure_group()
         await self._promote_delayed()
         claimed = await self.redis.xautoclaim(
@@ -76,6 +90,7 @@ class RedisTaskQueue:
         }
 
     async def ack(self, task: dict) -> None:
+        """确认任务成功，并删除 Streams 中已不再需要的消息。"""
         await self.redis.xack(self.stream_name, self.group_name, task["message_id"])
         await self.redis.xdel(self.stream_name, task["message_id"])
 
@@ -86,6 +101,7 @@ class RedisTaskQueue:
         max_attempts: int,
         delay_seconds: int = 0,
     ) -> str:
+        """根据尝试次数决定立即重试、延迟重试或转入死信队列。"""
         next_attempt = int(task.get("attempts", 0)) + 1
         if next_attempt >= max_attempts:
             await self.redis.xadd(
@@ -122,6 +138,7 @@ class RedisTaskQueue:
         return "retrying"
 
     async def _promote_delayed(self) -> None:
+        """把到期的延迟任务从有序集合重新投递到主 Stream。"""
         messages = await self.redis.zrangebyscore(
             self.delayed_tasks, 0, time.time(), start=0, num=100
         )

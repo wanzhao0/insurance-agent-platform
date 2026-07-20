@@ -1,3 +1,5 @@
+"""聊天用例：把 HTTP 请求转换为可执行工作流，并将结果以 SSE 事件输出。"""
+
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
 import asyncio
@@ -16,6 +18,11 @@ from app.application.workflow.engine import WorkflowExecutionError
 
 @dataclass
 class ChatContext:
+    """一次聊天在工作流中共享的输入。
+
+    `knowledge_base_id` 在进入工作流前已经按租户校验，因此后续 Agent 不需要再次相信客户端传值。
+    """
+
     request: ChatRequest
     conversation_id: str
     knowledge_base_id: str
@@ -25,6 +32,11 @@ class ChatContext:
 
 
 class ChatService:
+    """协调知识库范围、提示词、工作流、会话持久化和 SSE 输出。
+
+    这个类不直接知道 Qdrant 或 SQLAlchemy 的细节，依赖在启动时由 AppContainer 注入。
+    """
+
     def __init__(
         self,
         settings: Settings,
@@ -75,6 +87,7 @@ class ChatService:
         self.agent_orchestrator = orchestrator
 
     def prepare(self, request: ChatRequest, *, persist_conversation: bool = True) -> ChatContext:
+        """在调用模型前锁定租户可访问的知识库，并追加领域系统提示词。"""
         knowledge_base_id = self.knowledge_base_service.resolve_knowledge_base(
             request.tenant_id, request.knowledge_base_id
         )
@@ -91,6 +104,11 @@ class ChatService:
         )
 
     async def stream(self, context: ChatContext) -> AsyncIterator[StreamEvent]:
+        """运行工作流并逐个产生 SSE 事件。
+
+        API 层会把这里的 `StreamEvent` 序列化成 SSE。即使当前模型一次返回完整回答，仍按小片段
+        输出，以保持流式协议与真实流式模型兼容。
+        """
         try:
             state = await self.agent_orchestrator.run(context)
         except WorkflowExecutionError as exc:
@@ -113,6 +131,7 @@ class ChatService:
                 ),
                 None,
             )
+            # SQLAlchemy 仓库是同步实现；放到线程池避免占住 FastAPI 的异步事件循环。
             await asyncio.to_thread(
                 self.conversation_repository.save_turn,
                 context.conversation_id,

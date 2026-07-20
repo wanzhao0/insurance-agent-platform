@@ -1,3 +1,5 @@
+"""跨 API 实例传播已发布配置的通知总线。"""
+
 import asyncio
 import contextlib
 import json
@@ -13,6 +15,8 @@ logger = get_logger(__name__)
 
 
 class NullConfigBus:
+    """未配置 Redis 时的单机实现；调用方无需为本地开发写分支。"""
+
     instance_id = "local"
 
     async def start(self, callback: Callable[[dict], Awaitable[None]]) -> None:
@@ -26,6 +30,12 @@ class NullConfigBus:
 
 
 class RedisConfigBus:
+    """通过 Redis Pub/Sub 通知其他实例刷新运行时配置。
+
+    数据库中的配置版本才是事实来源；消息只负责提醒各实例重新加载，丢失单条通知也
+    不会改变已发布配置本身。
+    """
+
     channel = "insurance-agent:config-events"
 
     def __init__(self, url: str) -> None:
@@ -51,6 +61,7 @@ class RedisConfigBus:
         )
 
     async def _listen(self, callback: Callable[[dict], Awaitable[None]]) -> None:
+        """忽略自己发布的消息，并把其他实例的配置变更交给容器处理。"""
         async with self.redis.pubsub() as pubsub:
             await pubsub.subscribe(self.channel)
             async for message in pubsub.listen():
@@ -72,4 +83,5 @@ class RedisConfigBus:
 
 
 def build_config_bus(redis_url: str | None):
+    """根据部署配置选择跨实例 Redis 总线或本地空实现。"""
     return RedisConfigBus(redis_url) if redis_url else NullConfigBus()

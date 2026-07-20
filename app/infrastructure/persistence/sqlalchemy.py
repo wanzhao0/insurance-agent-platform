@@ -1,3 +1,9 @@
+"""SQLAlchemy 持久化适配器。
+
+表定义描述数据库结构，仓库类负责把领域模型转换为行记录。应用服务只依赖仓库能力，
+因此替换为 PostgreSQL、其他 ORM 或远程存储时，不应改动聊天、RAG 等业务编排代码。
+"""
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -207,6 +213,8 @@ def aware(value: datetime) -> datetime:
 
 
 class SqlAlchemyDatabase:
+    """管理 SQLAlchemy engine 和表初始化，不承载具体业务查询。"""
+
     def __init__(
         self,
         url: str,
@@ -216,11 +224,13 @@ class SqlAlchemyDatabase:
         max_overflow: int = 20,
     ) -> None:
         if url.startswith("sqlite:///"):
+            # SQLite 是本地文件，首次启动前需创建目录；网络数据库由服务端负责存储空间。
             database_path = Path(url.removeprefix("sqlite:///"))
             database_path.parent.mkdir(parents=True, exist_ok=True)
         connect_args = {"check_same_thread": False} if url.startswith("sqlite") else {}
         pool_options = {}
         if not url.startswith("sqlite"):
+            # SQLite 的连接模型与服务型数据库不同，连接池参数只对后者生效。
             pool_options = {
                 "pool_size": pool_size,
                 "max_overflow": max_overflow,
@@ -245,6 +255,8 @@ class SqlAlchemyDatabase:
 
 
 class SqlAlchemyDocumentRepository:
+    """知识文档仓库，负责文档内容与索引生命周期元数据的持久化。"""
+
     def __init__(self, database: SqlAlchemyDatabase) -> None:
         self.database = database
 
@@ -325,6 +337,7 @@ class SqlAlchemyDocumentRepository:
         document_id: str,
         values: dict,
     ) -> DocumentResponse | None:
+        """只更新索引流程允许修改的字段，避免后台任务意外覆盖文档正文。"""
         allowed = {"status", "source_uri", "checksum", "index_version"}
         updates = {key: value for key, value in values.items() if key in allowed}
         updates["updated_at"] = utcnow()

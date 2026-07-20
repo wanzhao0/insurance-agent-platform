@@ -1,3 +1,5 @@
+"""管理后台 API：用户、知识库、文档、配置版本和运维记录。"""
+
 import asyncio
 import hashlib
 from uuid import uuid4
@@ -47,6 +49,7 @@ ingestion_service = DocumentIngestionService()
 
 
 async def read_limited_upload(file: UploadFile, max_bytes: int) -> bytes:
+    """分块读取上传内容，在内存累积前强制执行大小上限。"""
     chunks: list[bytes] = []
     total = 0
     while chunk := await file.read(1024 * 1024):
@@ -69,6 +72,7 @@ async def record_audit(
     tenant_id: str | None = None,
     details: dict | None = None,
 ) -> None:
+    """将高风险后台变更写入审计仓库；未配置仓库时保持本地开发可用。"""
     if container.audit_repository is not None:
         await asyncio.to_thread(
             container.audit_repository.record,
@@ -82,6 +86,7 @@ async def record_audit(
 
 
 def validate_user_scope(container, role: str, tenant_ids: list[str]) -> None:
+    """防止普通用户被授予全租户范围，并拒绝不存在的租户 ID。"""
     if "*" in tenant_ids and role != "admin":
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,

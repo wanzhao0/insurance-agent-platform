@@ -1,3 +1,9 @@
+"""业务工具实现。
+
+工具描述会交给模型选择，但真正的执行始终在服务端完成；Agent 会在调用前注入当前
+租户和知识库范围，不能直接信任模型提供的资源标识。
+"""
+
 import asyncio
 from datetime import datetime, timezone
 from typing import Any
@@ -8,6 +14,8 @@ from app.domain.models import HandoffTicketResponse, SearchResult, ToolDescripto
 
 
 class PolicyLookupTool:
+    """仅检索保单和产品分类文档的领域工具。"""
+
     descriptor = ToolDescriptor(
         name="policy_lookup",
         description="Search policy and product documents in the current tenant knowledge base.",
@@ -28,6 +36,7 @@ class PolicyLookupTool:
         self.policy_categories = policy_categories or frozenset({"policy", "product"})
 
     async def invoke(self, arguments: dict[str, Any]) -> list[SearchResult]:
+        """执行 RAG 检索后按业务分类过滤，避免混入无关知识。"""
         results = await self.rag_service.search(arguments["knowledge_base_id"], arguments["query"])
         return [
             result
@@ -37,6 +46,8 @@ class PolicyLookupTool:
 
 
 class HandoffTool:
+    """在证据不足或需要人工审核时创建转人工工单。"""
+
     descriptor = ToolDescriptor(
         name="handoff_to_human",
         description="Create a human service ticket when evidence is missing or the customer needs manual review.",
@@ -55,6 +66,7 @@ class HandoffTool:
         self.repository = repository
 
     async def invoke(self, arguments: dict[str, Any]) -> HandoffTicketResponse:
+        """优先持久化工单；无仓库时保留可用于本地演示的内存返回值。"""
         tenant_id = str(arguments["tenant_id"])
         reason = str(arguments["reason"])
         if self.repository is not None:

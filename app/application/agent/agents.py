@@ -1,3 +1,8 @@
+"""工作流中的 Agent 实现。
+
+Agent 负责把模型、工具和工作流状态拼接起来；它们不直接接收 HTTP 请求，也不直接访问数据库。
+"""
+
 import json
 from collections.abc import Callable
 from typing import Any
@@ -9,6 +14,8 @@ from app.domain.ports import ModelClient
 
 
 class KnowledgeRetrievalAgent:
+    """让模型选择工具，并将检索结果作为下一轮模型调用的证据。"""
+
     name = "knowledge_retrieval"
 
     def __init__(
@@ -39,7 +46,7 @@ class KnowledgeRetrievalAgent:
             for call in completion.tool_calls:
                 state.tool_calls.append(call)
                 arguments = dict(call.arguments)
-                # Tenant scoping is owned by the server, never by model output.
+                # 租户范围永远由服务端覆盖，不能相信模型输出的 knowledge_base_id。
                 arguments["knowledge_base_id"] = state.context.knowledge_base_id
                 if call.name == "handoff_to_human":
                     arguments["tenant_id"] = state.context.request.tenant_id
@@ -87,6 +94,8 @@ class KnowledgeRetrievalAgent:
 
 
 class SafetyReviewAgent:
+    """没有可信证据时阻止模型给出看似确定的业务结论。"""
+
     name = "safety_review"
 
     async def run(self, state: WorkflowState) -> None:

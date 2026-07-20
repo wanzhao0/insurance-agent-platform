@@ -1,3 +1,5 @@
+"""租户、知识库和文档元数据的应用服务。"""
+
 from dataclasses import dataclass
 from typing import Any
 
@@ -37,6 +39,11 @@ class TenantConfig:
 
 
 class KnowledgeBaseService:
+    """维护内存中的租户/知识库目录，并委托仓库保存实际数据。
+
+    目录会在进程启动时从数据库恢复，随后再由领域插件补齐默认配置。
+    """
+
     def __init__(
         self,
         document_repository: DocumentRepository,
@@ -74,6 +81,10 @@ class KnowledgeBaseService:
             }
 
     def seed_defaults(self, plugin: DomainPlugin) -> None:
+        """幂等地补齐插件提供的默认数据。
+
+        `setdefault` 的含义是“已有业务数据优先”，因此重启服务不会反复增加已有文档版本。
+        """
         for item in plugin.knowledge_bases:
             self._knowledge_bases.setdefault(
                 item.knowledge_base_id,
@@ -224,6 +235,10 @@ class KnowledgeBaseService:
         return next(item for item in self.list_all() if item.knowledge_base_id == knowledge_base_id)
 
     def resolve_knowledge_base(self, tenant_id: str, knowledge_base_id: str | None) -> str:
+        """返回当前租户真正可用的知识库 ID。
+
+        客户端即使传了知识库 ID，也必须属于该租户且处于启用状态。这是租户隔离的核心入口。
+        """
         if knowledge_base_id:
             knowledge_base = self.get(knowledge_base_id)
             if (

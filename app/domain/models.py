@@ -1,3 +1,9 @@
+"""跨层传递的数据模型。
+
+这里的 Pydantic `BaseModel` 同时承担两件事：校验外部 API 输入，以及明确 API 输出结构。
+新增字段时优先在这里定义并补测试，不要长期依赖路由里临时拼出的字典。
+"""
+
 from datetime import datetime
 from typing import Any, Literal
 from uuid import uuid4

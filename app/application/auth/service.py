@@ -1,3 +1,5 @@
+"""账号、密码和访问令牌的应用服务。"""
+
 from datetime import datetime, timedelta, timezone
 import base64
 import binascii
@@ -12,6 +14,8 @@ from app.domain.models import UserContext, UserCreate, UserResponse, UserUpdate
 
 
 class AuthService:
+    """把用户仓库与 JWT/本地开发令牌组合成统一认证逻辑。"""
+
     def __init__(self, settings: Settings, user_repository=None) -> None:
         self.settings = settings
         self.user_repository = user_repository
@@ -19,6 +23,7 @@ class AuthService:
 
     @staticmethod
     def hash_password(password: str) -> str:
+        """使用带随机 salt 的 scrypt 保存密码摘要，数据库不保存明文密码。"""
         salt = os.urandom(16)
         digest = hashlib.scrypt(password.encode(), salt=salt, n=2**14, r=8, p=1, dklen=32)
         return f"scrypt$16384$8$1${base64.b64encode(salt).decode()}${base64.b64encode(digest).decode()}"
@@ -83,6 +88,10 @@ class AuthService:
         return self.user_repository.list() if self.user_repository is not None else []
 
     def resolve_user_context(self, token_user: UserContext) -> UserContext | None:
+        """以数据库中的最新用户状态覆盖令牌中的旧角色和租户范围。
+
+        因此停用账号或收回租户权限后，不必等待旧 JWT 自然过期。
+        """
         if self.user_repository is None:
             return token_user
         user = self.user_repository.get_by_id(token_user.user_id)

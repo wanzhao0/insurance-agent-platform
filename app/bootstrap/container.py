@@ -1,3 +1,9 @@
+"""依赖组装中心（composition root）。
+
+这里是唯一知道“当前使用 SQLite 还是 PostgreSQL、内存向量库还是 Qdrant、Mock 模型还是
+OpenAI-compatible 模型”的地方。业务服务只依赖抽象接口，因此供应商选择不会散落到各个路由中。
+"""
+
 import asyncio
 from dataclasses import dataclass, replace
 
@@ -50,6 +56,12 @@ from app.plugins.registry import load_domain_plugin
 
 @dataclass
 class AppContainer:
+    """一个 API 进程运行所需的服务和外部资源。
+
+    路由通过 `request.app.state.container` 取到这个对象。它只保存已经组装好的对象，不在这里
+    实现具体业务规则。
+    """
+
     settings: Settings
     auth_service: AuthService
     domain_plugin: DomainPlugin
@@ -80,6 +92,7 @@ class AppContainer:
         return get_logger("app.container")
 
     async def startup(self) -> None:
+        # 先订阅配置事件，保证其他实例发布配置后本实例能刷新内存中的客户端和工作流。
         await self.config_bus.start(self._handle_config_event)
         await self.rag_service.startup()
         await self.chat_service.startup()
@@ -151,6 +164,11 @@ class AppContainer:
         )
 
     async def update_runtime(self, payload: RuntimeConfigUpdate) -> RuntimeConfigResponse:
+        """在内存中替换可热更新的模型、限流器和工作流。
+
+        先构造所有新对象，成功后才替换旧对象。若新模型或新工作流无效，就恢复旧设置，避免
+        出现“设置改了一半、服务却无法聊天”的中间状态。
+        """
         updates = payload.model_dump(exclude_unset=True)
         plugin_fields = {"system_prompt", "workflow_version", "workflow_steps"}
         setting_updates = {
@@ -205,6 +223,7 @@ class AppContainer:
         actor_id: str,
         note: str = "后台运行配置更新",
     ) -> RuntimeConfigResponse:
+        """保存完整配置快照并发布，而非只保存本次改动的字段。"""
         candidate = self.runtime_snapshot(payload)
         values = candidate.model_dump(exclude_none=True)
         version = await asyncio.to_thread(
@@ -222,6 +241,7 @@ class AppContainer:
         return self.runtime_config()
 
     def runtime_snapshot(self, overrides: RuntimeConfigUpdate | None = None) -> RuntimeConfigUpdate:
+        """把当前运行状态转换成可回滚的完整配置版本。"""
         values = {
             "model_provider": self.settings.model_provider,
             "model_name": self.settings.model_name,
@@ -262,6 +282,7 @@ class AppContainer:
         return self.runtime_config()
 
     async def _handle_config_event(self, event: dict) -> None:
+        """处理其他 API 实例通过 Redis 广播的已发布配置。"""
         scope_type = event.get("scope_type")
         scope_id = event.get("scope_id")
         if scope_type == "tenant" and scope_id:
@@ -289,6 +310,11 @@ class AppContainer:
 
 
 def build_container(settings: Settings) -> AppContainer:
+    """根据环境变量选择基础设施实现，并把它们注入应用服务。
+
+    开发环境可以使用 memory/SQLite/本地 Qdrant；生产环境通常换成 PostgreSQL、Redis 和远程
+    Qdrant。调用方不需要改 ChatService 或 RagService 的代码。
+    """
     domain_plugin = load_domain_plugin(settings.domain_plugin)
     database = None
     persistence = None
@@ -301,6 +327,7 @@ def build_container(settings: Settings) -> AppContainer:
     evaluation_repository = None
     workflow_repository = None
     if settings.persistence_provider.lower() in {"sqlalchemy", "database", "postgres", "sqlite"}:
+        # Repository 是数据访问层；其余服务通过方法调用它，而不是直接拼 SQL。
         database = SqlAlchemyDatabase(
             settings.database_url,
             settings.database_echo,
@@ -329,6 +356,7 @@ def build_container(settings: Settings) -> AppContainer:
         workflow_repository = MemoryWorkflowRepository()
     published_config = config_repository.published()
     if published_config is not None:
+        # 进程重启后先恢复最后一次发布的配置，再创建模型和工作流。
         runtime_values = RuntimeConfigUpdate.model_validate(published_config.values)
         configured = runtime_values.model_dump(exclude_unset=True)
         for field, value in configured.items():

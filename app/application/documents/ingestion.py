@@ -1,3 +1,5 @@
+"""上传文件到纯文本知识文档的解析器。"""
+
 import csv
 import json
 from dataclasses import dataclass
@@ -22,6 +24,8 @@ class ParsedDocument:
 
 
 class DocumentIngestionService:
+    """根据文件扩展名调用相应解析器，并统一返回可索引的文本。"""
+
     max_extracted_characters = 100_000
     supported_extensions = {
         ".md",
@@ -41,6 +45,10 @@ class DocumentIngestionService:
     def parse(
         self, filename: str, payload: bytes, content_type: str | None = None
     ) -> ParsedDocument:
+        """解析单个文件。
+
+        先限制格式、空文件和提取文本长度，再交给文档仓库。二进制原件不会直接发送给模型。
+        """
         extension = PurePosixPath(filename).suffix.lower()
         if extension not in self.supported_extensions:
             supported = ", ".join(sorted(self.supported_extensions - {".xlsm"}))

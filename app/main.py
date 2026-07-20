@@ -1,3 +1,9 @@
+"""HTTP 进程入口。
+
+此文件只负责组装 Web 应用：创建容器、挂中间件、注册路由和托管静态文件。聊天、检索、数据库
+等业务逻辑分别位于 application 和 infrastructure，避免 HTTP 层变成业务中心。
+"""
+
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -22,7 +28,11 @@ logger = get_logger(__name__)
 
 
 class SPAStaticFiles(StaticFiles):
-    """Serve the Vue entry point for client-side routes on direct navigation."""
+    """为前端路由提供回退页面。
+
+    浏览器直接访问 `/knowledge` 这类前端路由时，服务器实际不存在同名文件；返回 `index.html`
+    后由前端路由接管。带扩展名的真实静态文件仍按普通文件处理。
+    """
 
     async def get_response(self, path: str, scope):
         try:
@@ -37,6 +47,11 @@ class SPAStaticFiles(StaticFiles):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """FastAPI 的启动/停止钩子。
+
+    每个 API 进程拥有一个容器实例；容器负责打开或关闭数据库、向量库、模型客户端等资源。
+    路由函数无需自己创建连接，也更方便在测试中替换基础设施实现。
+    """
     container = build_container(settings)
     app.state.container = container
     await container.startup()

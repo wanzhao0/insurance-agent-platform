@@ -1,3 +1,9 @@
+"""RAG（检索增强生成）用例。
+
+本模块负责把文档切块写入向量库，并在回答前融合向量和关键词检索。它只提供证据；客服答案
+由 Agent 工作流生成，避免检索逻辑和对话逻辑混在一起。
+"""
+
 import asyncio
 import re
 import time
@@ -12,6 +18,8 @@ from app.domain.ports import VectorStore
 
 
 class RagTool:
+    """将 RagService 暴露给模型的工具适配器。"""
+
     descriptor = ToolDescriptor(
         name="search_knowledge_base",
         description="Search tenant-scoped knowledge-base content for grounded answers.",
@@ -36,6 +44,12 @@ class RagTool:
 
 
 class RagService:
+    """文档索引和混合检索服务。
+
+    向量检索适合语义相近的问法，关键词检索适合精确术语。融合两者能降低泛化问题误命中无关
+    条款的概率。
+    """
+
     chunk_size = 600
     chunk_overlap = 80
     generic_query_phrases = (
@@ -76,6 +90,7 @@ class RagService:
         vector_results = await self.vector_store.search(
             knowledge_base_id, vector, max(limit * 3, limit)
         )
+        # 关键词分数基于原文档计算；同步仓库调用放到线程，避免阻塞其它请求。
         documents = await asyncio.to_thread(
             self.knowledge_base_service.document_repository.list, knowledge_base_id
         )
@@ -92,6 +107,7 @@ class RagService:
                 result.metadata.get("source_document_id", result.document_id.split(":chunk-")[0])
             )
             lexical = lexical_scores.get(source_id, 0.0)
+            # 没有关键词证据时，要求更高向量相似度，防止“保险产品”这类泛化问题误命中条款。
             if lexical == 0 and result.score < max(self.settings.rag_min_score, 0.55):
                 continue
             combined = (
@@ -137,6 +153,7 @@ class RagService:
         return results
 
     async def index_document(self, document: DocumentResponse) -> None:
+        """把一个文档安全地重建为向量块，并同步更新生命周期状态。"""
         await asyncio.to_thread(
             self.knowledge_base_service.document_repository.update_lifecycle,
             document.knowledge_base_id,
@@ -167,7 +184,7 @@ class RagService:
                 vector = await self.embedding_client.embed(f"{document.title}\n{content}")
                 indexed_chunks.append((chunk, vector))
 
-            # Keep the previous index intact if embedding fails before this point.
+            # 先完成全部 embedding，再替换旧索引；中途失败时保留旧索引，避免检索瞬间变空。
             await self.vector_store.delete(document.knowledge_base_id, document.document_id)
             for chunk, vector in indexed_chunks:
                 await self.vector_store.upsert(document.knowledge_base_id, chunk, vector)
@@ -192,6 +209,7 @@ class RagService:
 
     @classmethod
     def _lexical_score(cls, query: str, content: str) -> float:
+        """用轻量 token 重叠率提供关键词证据，不依赖额外搜索引擎。"""
         normalized = query.lower()
         for phrase in cls.generic_query_phrases:
             normalized = normalized.replace(phrase, "")
@@ -213,6 +231,7 @@ class RagService:
 
     @classmethod
     def _chunks(cls, content: str) -> list[str]:
+        """按字符切块，并优先在换行或中文句号附近断开。"""
         if len(content) <= cls.chunk_size:
             return [content]
         chunks: list[str] = []

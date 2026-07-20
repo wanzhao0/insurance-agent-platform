@@ -1,3 +1,5 @@
+"""FastAPI 路由共享的身份识别与授权依赖。"""
+
 import secrets
 import asyncio
 
@@ -10,6 +12,7 @@ async def get_current_user(
     request: Request,
     authorization: str | None = Header(default=None),
 ) -> UserContext:
+    """从 Bearer Token 解析用户，并从仓库刷新其当前的角色和租户范围。"""
     settings = request.app.state.container.settings
     if authorization and authorization.lower().startswith("bearer "):
         token = authorization[7:].strip()
@@ -45,6 +48,7 @@ async def get_current_user(
 
 
 def assert_tenant_access(user: UserContext, tenant_id: str) -> None:
+    """确保非管理员只能访问自己被显式授权的租户。"""
     if user.role == "admin" or "*" in user.tenant_ids or tenant_id in user.tenant_ids:
         return
     raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="tenant access denied")
@@ -55,6 +59,7 @@ async def require_admin(
     x_admin_token: str | None = Header(default=None),
     authorization: str | None = Header(default=None),
 ) -> UserContext:
+    """要求管理员权限；本地环境保留无令牌的开发捷径，生产环境不可依赖它。"""
     settings = request.app.state.container.settings
     if settings.admin_token is not None:
         expected = settings.admin_token.get_secret_value()

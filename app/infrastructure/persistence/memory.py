@@ -1,3 +1,9 @@
+"""内存仓库适配器。
+
+这些实现用于测试和本地轻量运行；进程重启后数据会丢失，因此不能替代生产数据库。
+接口形状与 SQLAlchemy 仓库保持一致，便于应用服务在两者之间切换。
+"""
+
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -13,6 +19,7 @@ from app.domain.models import (
 
 
 def now() -> datetime:
+    """统一生成带 UTC 时区的时间，避免测试数据混入本地时区。"""
     return datetime.now(timezone.utc)
 
 
@@ -61,6 +68,8 @@ class MemoryUserRepository:
 
 
 class MemoryConfigRepository:
+    """在进程内保存配置版本，模拟“同一范围只有一个已发布版本”的规则。"""
+
     def __init__(self) -> None:
         self.items: dict[str, ConfigVersionResponse] = {}
 
@@ -103,6 +112,7 @@ class MemoryConfigRepository:
         )
 
     def publish(self, config_id):
+        """发布目标版本，并将同一作用域原已发布版本归档。"""
         target = self.items.get(config_id)
         if target is None:
             return None

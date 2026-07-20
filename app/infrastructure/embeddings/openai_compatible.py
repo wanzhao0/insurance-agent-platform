@@ -1,3 +1,5 @@
+"""兼容 OpenAI Embeddings 协议的向量化客户端。"""
+
 import asyncio
 
 import httpx
@@ -6,6 +8,8 @@ from app.core.config import Settings
 
 
 class OpenAICompatibleEmbeddingClient:
+    """把文本发送给外部 Embedding 服务，并保留超时和重试边界。"""
+
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.dimension = settings.embedding_dimension
@@ -22,6 +26,7 @@ class OpenAICompatibleEmbeddingClient:
         return {"Authorization": f"Bearer {self.settings.embedding_api_key.get_secret_value()}"}
 
     async def embed(self, text: str) -> list[float]:
+        """返回文本向量；供应商维度变化时同步记录实际维度以便后续检查。"""
         last_error: Exception | None = None
         for attempt in range(self.settings.model_max_retries + 1):
             try:

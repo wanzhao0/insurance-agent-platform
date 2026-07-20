@@ -1,3 +1,5 @@
+"""兼容 OpenAI Chat Completions 协议的模型客户端。"""
+
 import asyncio
 import json
 from collections.abc import AsyncIterator
@@ -9,6 +11,8 @@ from app.domain.models import ChatMessage, ModelCompletion, ModelToolCall, ToolD
 
 
 class OpenAICompatibleModelClient:
+    """将领域消息、工具描述转换为 OpenAI 兼容 HTTP 请求。"""
+
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self.client = httpx.AsyncClient(
@@ -17,6 +21,7 @@ class OpenAICompatibleModelClient:
         )
 
     def _headers(self) -> dict[str, str]:
+        """在真正发请求时读取密钥，密钥从不进入前端配置或响应。"""
         if self.settings.model_api_key is None:
             raise RuntimeError("AGENT_MODEL_API_KEY is required for the configured model provider")
         return {"Authorization": f"Bearer {self.settings.model_api_key.get_secret_value()}"}
@@ -82,6 +87,7 @@ class OpenAICompatibleModelClient:
         temperature: float = 0.2,
         tools: list[ToolDescriptor] | None = None,
     ) -> ModelCompletion:
+        """获取完整回答及工具调用；仅对可恢复的传输/协议错误做有限重试。"""
         last_error: Exception | None = None
         for attempt in range(self.settings.model_max_retries + 1):
             try:
@@ -110,12 +116,14 @@ class OpenAICompatibleModelClient:
             except (httpx.HTTPError, KeyError, IndexError, TypeError, ValueError) as exc:
                 last_error = exc
                 if attempt < self.settings.model_max_retries:
+                    # 简单递增退避，避免瞬时网络失败立刻形成重试尖峰。
                     await asyncio.sleep(0.2 * (attempt + 1))
         raise RuntimeError("model completion failed") from last_error
 
     async def stream(
         self, messages: list[ChatMessage], *, temperature: float = 0.2
     ) -> AsyncIterator[str]:
+        """把上游 SSE 数据块转换为纯文本 token 流。"""
         async with self.client.stream(
             "POST",
             "/chat/completions",

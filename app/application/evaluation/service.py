@@ -1,3 +1,5 @@
+"""Agent 回归评测服务，支持确定性规则和可选 LLM 裁判。"""
+
 import json
 import asyncio
 from statistics import mean
@@ -16,6 +18,8 @@ from app.plugins.base import DomainPlugin
 
 
 class EvaluationService:
+    """执行评测集，计算检索、引用、事实依据和无上下文安全等指标。"""
+
     def __init__(
         self,
         chat_service: ChatService,
@@ -33,6 +37,7 @@ class EvaluationService:
         self.evaluation_repository = evaluation_repository
 
     def load_default_cases(self) -> list[EvaluationCase]:
+        """从当前行业插件加载随代码版本管理的 JSONL 回归用例。"""
         path = self.domain_plugin.evaluation_dataset
         return [
             EvaluationCase.model_validate(json.loads(line))
@@ -41,6 +46,7 @@ class EvaluationService:
         ]
 
     async def run(self, cases: list[EvaluationCase], judge: str = "rules") -> EvaluationReport:
+        """逐例运行聊天链路，汇总结果，并在可用时保存可追溯的评测报告。"""
         results: list[EvaluationCaseResult] = []
         for case in cases:
             results.append(await self._run_case(case, judge))
@@ -96,6 +102,7 @@ class EvaluationService:
         return report
 
     async def _run_case(self, case: EvaluationCase, judge: str) -> EvaluationCaseResult:
+        """运行单条用例；规则得分始终可用，LLM 裁判只是可选增强。"""
         knowledge_base_id = await asyncio.to_thread(
             self.knowledge_base_service.resolve_knowledge_base,
             case.tenant_id,
@@ -161,6 +168,7 @@ class EvaluationService:
         )
 
     async def _llm_judge(self, case, answer, retrieved, fallback_score, grounded, no_context_safe):
+        """让模型评估回答质量；响应异常时回退到稳定的规则评分。"""
         prompt = {
             "query": case.query,
             "evidence": [item.model_dump(mode="json") for item in retrieved],

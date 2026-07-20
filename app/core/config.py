@@ -1,3 +1,9 @@
+"""服务端运行配置。
+
+所有值可由 ``AGENT_`` 前缀的环境变量覆盖；密钥使用 ``SecretStr``，避免被日志或
+诊断输出直接打印。业务侧通过依赖注入取得配置，不应在模块顶层读取环境变量。
+"""
+
 from functools import lru_cache
 
 from pydantic import Field, SecretStr, field_validator, model_validator
@@ -5,6 +11,8 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
+    """Pydantic Settings 将环境变量解析为经过校验的不可变运行时配置。"""
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_prefix="AGENT_",
@@ -103,6 +111,7 @@ class Settings(BaseSettings):
 
     @model_validator(mode="after")
     def validate_production_security(self) -> "Settings":
+        """在生产启动前拒绝默认密码和缺失的 JWT 密钥。"""
         if self.environment.lower() == "production":
             if self.jwt_secret is None:
                 raise ValueError("AGENT_JWT_SECRET is required in production")
@@ -113,4 +122,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """缓存单进程配置实例，避免每次请求重复读取环境变量和 ``.env`` 文件。"""
     return Settings()
