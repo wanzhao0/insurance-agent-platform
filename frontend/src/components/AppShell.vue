@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue'
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router'
-import { Bot, BookOpen, ClipboardCheck, FileText, Gauge, LogOut, Settings2, Users } from '@lucide/vue'
+import { Bot, BookOpen, ClipboardCheck, FileText, Gauge, LogOut, Settings2, ShieldCheck, Users } from '@lucide/vue'
 import { useAppStore } from '@/stores/app'
 
 const store = useAppStore()
@@ -15,6 +15,7 @@ const navigation = [
   { to: '/tenants', label: '租户配置', icon: Users },
   { to: '/runtime', label: '模型与工具', icon: Settings2 },
   { to: '/evaluations', label: '质量评测', icon: ClipboardCheck },
+  { to: '/governance', label: '平台治理', icon: ShieldCheck },
 ]
 const pageTitle = computed(() => navigation.find((item) => route.path.startsWith(item.to))?.label || '平台概览')
 

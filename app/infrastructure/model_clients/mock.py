@@ -3,7 +3,13 @@ import json
 import re
 from collections.abc import AsyncIterator
 
-from app.domain.models import ChatMessage, ModelCompletion, ModelToolCall, SearchResult, ToolDescriptor
+from app.domain.models import (
+    ChatMessage,
+    ModelCompletion,
+    ModelToolCall,
+    SearchResult,
+    ToolDescriptor,
+)
 
 
 class MockModelClient:
@@ -22,7 +28,9 @@ class MockModelClient:
                 (message.content or "" for message in reversed(messages) if message.role == "user"),
                 "",
             )
-            search_tool = next((tool for tool in tools if tool.name == "search_knowledge_base"), None)
+            search_tool = next(
+                (tool for tool in tools if tool.name == "search_knowledge_base"), None
+            )
             if search_tool is not None:
                 return ModelCompletion(
                     tool_calls=[
@@ -35,7 +43,9 @@ class MockModelClient:
                 )
         return ModelCompletion(content=self._answer_for_messages(messages))
 
-    async def stream(self, messages: list[ChatMessage], *, temperature: float = 0.2) -> AsyncIterator[str]:
+    async def stream(
+        self, messages: list[ChatMessage], *, temperature: float = 0.2
+    ) -> AsyncIterator[str]:
         answer = self._answer_for_messages(messages)
         for index in range(0, len(answer), 12):
             await asyncio.sleep(0.015)
@@ -100,7 +110,9 @@ class MockModelClient:
                 continue
             if not isinstance(payload, list):
                 continue
-            results.extend(SearchResult.model_validate(item) for item in payload if isinstance(item, dict))
+            results.extend(
+                SearchResult.model_validate(item) for item in payload if isinstance(item, dict)
+            )
         return "\n\n".join(
             f"[{index}] {result.title}\n{result.content}" for index, result in enumerate(results, 1)
         )
@@ -108,7 +120,11 @@ class MockModelClient:
     @staticmethod
     def _relevant_section(content: str, user_message: str) -> str:
         headings = list(re.finditer(r"(?m)^##\s+(.+)$", content))
-        query_keywords = [keyword for keyword in ("流程", "材料", "边界", "时限", "责任") if keyword in user_message]
+        query_keywords = [
+            keyword
+            for keyword in ("流程", "材料", "边界", "时限", "责任")
+            if keyword in user_message
+        ]
         for index, heading in enumerate(headings):
             title = heading.group(1)
             if query_keywords and any(keyword in title for keyword in query_keywords):

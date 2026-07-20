@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timezone
 from typing import Any
 from uuid import uuid4
@@ -20,16 +21,18 @@ class PolicyLookupTool:
         },
     )
 
-    def __init__(self, rag_service: RagService) -> None:
+    def __init__(
+        self, rag_service: RagService, policy_categories: frozenset[str] | None = None
+    ) -> None:
         self.rag_service = rag_service
+        self.policy_categories = policy_categories or frozenset({"policy", "product"})
 
     async def invoke(self, arguments: dict[str, Any]) -> list[SearchResult]:
         results = await self.rag_service.search(arguments["knowledge_base_id"], arguments["query"])
-        policy_categories = {"policy", "product", "产品", "产品条款", "条款", "保障责任"}
         return [
             result
             for result in results
-            if str(result.metadata.get("category", "")).strip().lower() in policy_categories
+            if str(result.metadata.get("category", "")).strip().lower() in self.policy_categories
         ]
 
 
@@ -55,7 +58,12 @@ class HandoffTool:
         tenant_id = str(arguments["tenant_id"])
         reason = str(arguments["reason"])
         if self.repository is not None:
-            return self.repository.create(tenant_id, reason, arguments.get("conversation_id"))
+            return await asyncio.to_thread(
+                self.repository.create,
+                tenant_id,
+                reason,
+                arguments.get("conversation_id"),
+            )
         return HandoffTicketResponse(
             ticket_id=str(uuid4()),
             tenant_id=tenant_id,

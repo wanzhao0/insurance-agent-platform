@@ -14,11 +14,15 @@ class InMemoryVectorStore:
         self._vectors.clear()
         self._documents.clear()
 
-    async def upsert(self, knowledge_base_id: str, document: DocumentResponse, vector: list[float]) -> None:
+    async def upsert(
+        self, knowledge_base_id: str, document: DocumentResponse, vector: list[float]
+    ) -> None:
         self._vectors[(knowledge_base_id, document.document_id)] = vector
         self._documents[(knowledge_base_id, document.document_id)] = document
 
-    async def search(self, knowledge_base_id: str, vector: list[float], top_k: int) -> list[SearchResult]:
+    async def search(
+        self, knowledge_base_id: str, vector: list[float], top_k: int
+    ) -> list[SearchResult]:
         candidates: list[SearchResult] = []
         for (stored_knowledge_base_id, _), document in self._documents.items():
             if stored_knowledge_base_id != knowledge_base_id:

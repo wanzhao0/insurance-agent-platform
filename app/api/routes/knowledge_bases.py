@@ -1,7 +1,16 @@
+import asyncio
+from uuid import uuid4
+
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 
 from app.api.dependencies import assert_tenant_access, get_current_user, require_admin
-from app.domain.models import DocumentCreate, DocumentResponse, KnowledgeBaseResponse, SearchRequest, SearchResponse
+from app.domain.models import (
+    DocumentCreate,
+    DocumentResponse,
+    KnowledgeBaseResponse,
+    SearchRequest,
+    SearchResponse,
+)
 from app.domain.models import UserContext
 
 
@@ -15,7 +24,10 @@ async def list_knowledge_bases(
     user: UserContext = Depends(get_current_user),
 ) -> list[KnowledgeBaseResponse]:
     assert_tenant_access(user, tenant_id)
-    return request.app.state.container.knowledge_base_service.list_for_tenant(tenant_id)
+    return await asyncio.to_thread(
+        request.app.state.container.knowledge_base_service.list_for_tenant,
+        tenant_id,
+    )
 
 
 @router.get("/{knowledge_base_id}/documents", response_model=list[DocumentResponse])
@@ -27,12 +39,18 @@ async def list_documents(
     container = request.app.state.container
     knowledge_base = container.knowledge_base_service.get(knowledge_base_id)
     if knowledge_base is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="knowledge base not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="knowledge base not found"
+        )
     assert_tenant_access(user, knowledge_base.tenant_id)
-    return container.document_repository.list(knowledge_base_id)
+    return await asyncio.to_thread(container.document_repository.list, knowledge_base_id)
 
 
-@router.post("/{knowledge_base_id}/documents", response_model=DocumentResponse, status_code=status.HTTP_201_CREATED)
+@router.post(
+    "/{knowledge_base_id}/documents",
+    response_model=DocumentResponse,
+    status_code=status.HTTP_201_CREATED,
+)
 async def add_document(
     knowledge_base_id: str,
     payload: DocumentCreate,
@@ -41,15 +59,54 @@ async def add_document(
 ) -> DocumentResponse:
     container = request.app.state.container
     if container.knowledge_base_service.get(knowledge_base_id) is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="knowledge base not found")
-    document = container.knowledge_base_service.add_document(knowledge_base_id, payload)
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="knowledge base not found"
+        )
+    document = await asyncio.to_thread(
+        container.knowledge_base_service.add_document,
+        knowledge_base_id,
+        payload,
+    )
     if container.settings.task_queue.lower() == "redis":
-        await container.task_queue.enqueue(
+        task_id = str(uuid4())
+        task_payload = {
+            "knowledge_base_id": knowledge_base_id,
+            "document_id": document.document_id,
+        }
+        await asyncio.to_thread(
+            container.task_repository.create,
+            task_id,
             "index_document",
-            {"knowledge_base_id": knowledge_base_id, "document_id": document.document_id},
+            task_payload,
+            container.settings.task_max_attempts,
+        )
+        try:
+            await container.task_queue.enqueue(
+                "index_document",
+                task_payload,
+                task_id=task_id,
+            )
+        except Exception as exc:
+            await asyncio.to_thread(
+                container.task_repository.update,
+                task_id,
+                status="failed",
+                error=str(exc),
+            )
+            raise
+        document = await asyncio.to_thread(
+            container.document_repository.update_lifecycle,
+            knowledge_base_id,
+            document.document_id,
+            {"status": "parsed"},
         )
     else:
         await container.rag_service.index_document(document)
+        document = await asyncio.to_thread(
+            container.document_repository.get,
+            knowledge_base_id,
+            document.document_id,
+        )
     return document
 
 
@@ -63,7 +120,9 @@ async def search_documents(
     container = request.app.state.container
     knowledge_base = container.knowledge_base_service.get(knowledge_base_id)
     if knowledge_base is None:
-        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="knowledge base not found")
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="knowledge base not found"
+        )
     assert_tenant_access(user, knowledge_base.tenant_id)
     results = await container.rag_service.search(knowledge_base_id, payload.query, payload.top_k)
     return SearchResponse(query=payload.query, results=results)

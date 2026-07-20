@@ -11,7 +11,9 @@ from app.domain.ports import ModelClient
 class KnowledgeRetrievalAgent:
     name = "knowledge_retrieval"
 
-    def __init__(self, model_client_provider: Callable[[], ModelClient], tool_registry: ToolRegistry) -> None:
+    def __init__(
+        self, model_client_provider: Callable[[], ModelClient], tool_registry: ToolRegistry
+    ) -> None:
         self.model_client_provider = model_client_provider
         self.tool_registry = tool_registry
         self.max_rounds = 3
@@ -43,7 +45,9 @@ class KnowledgeRetrievalAgent:
                     arguments["tenant_id"] = state.context.request.tenant_id
                     arguments["conversation_id"] = state.context.conversation_id
                 result = await self.tool_registry.invoke(call.name, arguments)
-                if isinstance(result, list) and all(isinstance(item, SearchResult) for item in result):
+                if isinstance(result, list) and all(
+                    isinstance(item, SearchResult) for item in result
+                ):
                     self._merge_results(state, result)
                 messages.append(
                     ChatMessage(
@@ -68,7 +72,10 @@ class KnowledgeRetrievalAgent:
     def _serialize_result(result: Any) -> str:
         if isinstance(result, list):
             return json.dumps(
-                [item.model_dump(mode="json") if hasattr(item, "model_dump") else item for item in result],
+                [
+                    item.model_dump(mode="json") if hasattr(item, "model_dump") else item
+                    for item in result
+                ],
                 ensure_ascii=False,
             )
         return json.dumps(result, ensure_ascii=False, default=str)
@@ -86,9 +93,16 @@ class SafetyReviewAgent:
         if state.retrieved:
             state.review_reason = "回答包含知识库检索证据。"
             return
+        if any(call.name == "handoff_to_human" for call in state.tool_calls):
+            state.review_reason = "已创建转人工工单。"
+            return
         if "没有检索到" not in state.answer:
             query = next(
-                (message.content or "" for message in reversed(state.context.request.messages) if message.role == "user"),
+                (
+                    message.content or ""
+                    for message in reversed(state.context.request.messages)
+                    if message.role == "user"
+                ),
                 "当前问题",
             )
             state.answer = (

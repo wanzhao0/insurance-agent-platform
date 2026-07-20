@@ -18,8 +18,12 @@ class RequestContextMiddleware(BaseHTTPMiddleware):
         try:
             response = await call_next(request)
             response.headers["X-Request-ID"] = request_id
-            REQUESTS.labels(request.method, request.url.path, str(response.status_code)).inc()
-            REQUEST_DURATION.labels(request.method, request.url.path).observe(time.perf_counter() - started)
+            route = request.scope.get("route")
+            metric_path = getattr(route, "path", request.url.path)
+            REQUESTS.labels(request.method, metric_path, str(response.status_code)).inc()
+            REQUEST_DURATION.labels(request.method, metric_path).observe(
+                time.perf_counter() - started
+            )
             get_logger("app.http").info(
                 "request_completed",
                 extra={

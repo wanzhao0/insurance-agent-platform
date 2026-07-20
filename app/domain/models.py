@@ -29,6 +29,44 @@ class UserContext(BaseModel):
     tenant_ids: list[str] = Field(default_factory=list)
 
 
+class UserCreate(BaseModel):
+    username: str = Field(min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_.@-]+$")
+    password: str = Field(min_length=8, max_length=200)
+    role: Literal["admin", "operator", "viewer"] = "viewer"
+    tenant_ids: list[str] = Field(default_factory=list, max_length=100)
+
+    @field_validator("tenant_ids")
+    @classmethod
+    def validate_tenant_ids(cls, value: list[str]) -> list[str]:
+        if any(not item or len(item) > 100 for item in value):
+            raise ValueError("tenant ids must be between 1 and 100 characters")
+        return list(dict.fromkeys(value))
+
+
+class UserUpdate(BaseModel):
+    password: str | None = Field(default=None, min_length=8, max_length=200)
+    role: Literal["admin", "operator", "viewer"] | None = None
+    tenant_ids: list[str] | None = Field(default=None, max_length=100)
+    enabled: bool | None = None
+
+    @field_validator("tenant_ids")
+    @classmethod
+    def validate_tenant_ids(cls, value: list[str] | None) -> list[str] | None:
+        if value is not None and any(not item or len(item) > 100 for item in value):
+            raise ValueError("tenant ids must be between 1 and 100 characters")
+        return list(dict.fromkeys(value)) if value is not None else None
+
+
+class UserResponse(BaseModel):
+    user_id: str
+    username: str
+    role: Literal["admin", "operator", "viewer"]
+    tenant_ids: list[str] = Field(default_factory=list)
+    enabled: bool = True
+    created_at: datetime
+    updated_at: datetime
+
+
 class AuditLogResponse(BaseModel):
     audit_id: str
     actor_id: str
@@ -36,6 +74,7 @@ class AuditLogResponse(BaseModel):
     resource_type: str
     resource_id: str | None = None
     tenant_id: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
     created_at: datetime
 
 
@@ -65,6 +104,10 @@ class HandoffTicketResponse(BaseModel):
     created_at: datetime
 
 
+class HandoffTicketUpdate(BaseModel):
+    status: Literal["open", "assigned", "closed"]
+
+
 class PublicConfigResponse(BaseModel):
     app_name: str
     app_version: str
@@ -76,6 +119,9 @@ class PublicConfigResponse(BaseModel):
     available_tools: list[str]
     embedding_provider: str
     vector_store_provider: str
+    domain_plugin: str = "insurance"
+    domain_plugin_version: str = "1.0.0"
+    workflow_version: str = "1"
 
 
 class TenantConfigResponse(BaseModel):
@@ -130,7 +176,9 @@ TokenResponse.model_rebuild()
 class ChatRequest(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    tenant_id: str = Field(default="demo", min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$")
+    tenant_id: str = Field(
+        default="demo", min_length=1, max_length=100, pattern=r"^[a-zA-Z0-9_-]+$"
+    )
     knowledge_base_id: str | None = Field(default=None, max_length=100)
     conversation_id: str = Field(default_factory=lambda: str(uuid4()), max_length=100)
     messages: list[ChatMessage] = Field(min_length=1, max_length=50)
@@ -155,6 +203,11 @@ class DocumentResponse(DocumentCreate):
     knowledge_base_id: str
     version: int
     created_at: datetime
+    status: Literal["uploaded", "parsing", "parsed", "indexing", "ready", "failed"] = "ready"
+    source_uri: str | None = None
+    checksum: str | None = None
+    index_version: str | None = None
+    updated_at: datetime | None = None
 
 
 class KnowledgeBaseResponse(BaseModel):
@@ -191,6 +244,7 @@ class SearchResult(BaseModel):
     content: str
     score: float
     metadata: dict[str, Any] = Field(default_factory=dict)
+    retrieval_sources: list[Literal["vector", "lexical", "reranked"]] = Field(default_factory=list)
 
 
 class SearchResponse(BaseModel):
@@ -244,9 +298,22 @@ class RuntimeConfigResponse(BaseModel):
     embedding_provider: str
     embedding_model: str
     vector_store_provider: str
+    domain_plugin: str = "insurance"
+    workflow_version: str = "1"
+    published_config_version: int | None = None
+    system_prompt: str
+    workflow_steps: list["WorkflowStepConfig"]
+
+
+class WorkflowStepConfig(BaseModel):
+    name: str = Field(min_length=1, max_length=100)
+    timeout_seconds: float = Field(default=45, ge=1, le=600)
+    on_error: Literal["stop", "continue"] = "stop"
 
 
 class RuntimeConfigUpdate(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
     model_provider: str | None = Field(default=None, min_length=1, max_length=50)
     model_name: str | None = Field(default=None, min_length=1, max_length=200)
     model_base_url: str | None = Field(default=None, min_length=1, max_length=500)
@@ -256,6 +323,11 @@ class RuntimeConfigUpdate(BaseModel):
     rag_top_k: int | None = Field(default=None, ge=1, le=20)
     rate_limit_requests: int | None = Field(default=None, ge=1, le=10000)
     rate_limit_window_seconds: int | None = Field(default=None, ge=1, le=86400)
+    system_prompt: str | None = Field(default=None, min_length=20, max_length=20_000)
+    workflow_version: str | None = Field(default=None, min_length=1, max_length=100)
+    workflow_steps: list[WorkflowStepConfig] | None = Field(
+        default=None, min_length=1, max_length=20
+    )
 
 
 class EvaluationCase(BaseModel):
@@ -295,3 +367,73 @@ class EvaluationReport(BaseModel):
     no_context_precision: float
     overall_score: float
     cases: list[EvaluationCaseResult]
+
+
+class ConfigVersionCreate(BaseModel):
+    scope_type: Literal["platform", "tenant"] = "platform"
+    scope_id: str = "global"
+    values: dict[str, Any]
+    note: str = Field(default="", max_length=500)
+
+
+class ConfigVersionResponse(BaseModel):
+    config_id: str
+    scope_type: Literal["platform", "tenant"]
+    scope_id: str
+    version: int
+    status: Literal["draft", "published", "archived"]
+    values: dict[str, Any]
+    note: str
+    created_by: str
+    created_at: datetime
+    published_at: datetime | None = None
+
+
+class TaskJobResponse(BaseModel):
+    task_id: str
+    task_name: str
+    status: Literal["queued", "running", "succeeded", "retrying", "failed", "dead_letter"]
+    payload: dict[str, Any] = Field(default_factory=dict)
+    attempts: int = 0
+    max_attempts: int = 3
+    error: str | None = None
+    created_at: datetime
+    updated_at: datetime
+
+
+class WorkflowStepTrace(BaseModel):
+    step: str
+    status: Literal["succeeded", "failed", "skipped"]
+    duration_ms: float
+    error: str | None = None
+
+
+class WorkflowRunResponse(BaseModel):
+    run_id: str
+    conversation_id: str
+    tenant_id: str
+    workflow_version: str
+    status: Literal["succeeded", "failed"]
+    steps: list[WorkflowStepTrace] = Field(default_factory=list)
+    created_at: datetime
+
+
+class EvaluationRunResponse(BaseModel):
+    run_id: str
+    judge: Literal["rules", "llm"]
+    model_name: str
+    plugin_id: str
+    workflow_version: str
+    overall_score: float
+    dataset_size: int
+    report: EvaluationReport
+    created_at: datetime
+
+
+class DomainPluginResponse(BaseModel):
+    plugin_id: str
+    name: str
+    version: str
+    workflow_version: str
+    workflow_steps: list[str]
+    tools: list[str]

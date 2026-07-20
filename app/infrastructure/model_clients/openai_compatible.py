@@ -113,9 +113,14 @@ class OpenAICompatibleModelClient:
                     await asyncio.sleep(0.2 * (attempt + 1))
         raise RuntimeError("model completion failed") from last_error
 
-    async def stream(self, messages: list[ChatMessage], *, temperature: float = 0.2) -> AsyncIterator[str]:
+    async def stream(
+        self, messages: list[ChatMessage], *, temperature: float = 0.2
+    ) -> AsyncIterator[str]:
         async with self.client.stream(
-            "POST", "/chat/completions", headers=self._headers(), json=self._payload(messages, True, temperature)
+            "POST",
+            "/chat/completions",
+            headers=self._headers(),
+            json=self._payload(messages, True, temperature),
         ) as response:
             response.raise_for_status()
             async for line in response.aiter_lines():

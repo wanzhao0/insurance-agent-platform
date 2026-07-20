@@ -13,6 +13,7 @@ from app.core.config import get_settings
 from app.core.errors import register_exception_handlers
 from app.core.logging import configure_logging, get_logger
 from app.core.middleware import RequestContextMiddleware
+from app.core.tracing import setup_tracing
 
 
 settings = get_settings()
@@ -64,14 +65,22 @@ app.add_middleware(
 )
 register_exception_handlers(app)
 app.include_router(api_router, prefix=settings.api_prefix)
+setup_tracing(app, settings)
 
 
 @app.get("/favicon.ico", include_in_schema=False)
 async def favicon() -> Response:
     return Response(status_code=204)
 
+
 static_dir = Path(__file__).parent / "static"
 frontend_dir = static_dir / "frontend"
-app.mount("/prototype", StaticFiles(directory=static_dir / "prototype", html=True), name="legacy-prototype")
-frontend_static = SPAStaticFiles(directory=frontend_dir if frontend_dir.exists() else static_dir, html=True)
+app.mount(
+    "/prototype",
+    StaticFiles(directory=static_dir / "prototype", html=True),
+    name="legacy-prototype",
+)
+frontend_static = SPAStaticFiles(
+    directory=frontend_dir if frontend_dir.exists() else static_dir, html=True
+)
 app.mount("/", frontend_static, name="frontend")

@@ -22,6 +22,7 @@ class ParsedDocument:
 
 
 class DocumentIngestionService:
+    max_extracted_characters = 100_000
     supported_extensions = {
         ".md",
         ".markdown",
@@ -37,7 +38,9 @@ class DocumentIngestionService:
         ".xls",
     }
 
-    def parse(self, filename: str, payload: bytes, content_type: str | None = None) -> ParsedDocument:
+    def parse(
+        self, filename: str, payload: bytes, content_type: str | None = None
+    ) -> ParsedDocument:
         extension = PurePosixPath(filename).suffix.lower()
         if extension not in self.supported_extensions:
             supported = ", ".join(sorted(self.supported_extensions - {".xlsm"}))
@@ -46,7 +49,9 @@ class DocumentIngestionService:
             )
         if not payload:
             raise DocumentParseError("uploaded file is empty")
-        title = PurePosixPath(filename).stem.replace("_", " ").replace("-", " ").strip() or "未命名文档"
+        title = (
+            PurePosixPath(filename).stem.replace("_", " ").replace("-", " ").strip() or "未命名文档"
+        )
         metadata = {
             "source_filename": filename,
             "source_content_type": content_type or "application/octet-stream",
@@ -59,7 +64,9 @@ class DocumentIngestionService:
                 content, rows = self._parse_delimited(payload, "\t" if extension == ".tsv" else ",")
                 metadata["row_count"] = rows
             elif extension == ".json":
-                content = json.dumps(json.loads(payload.decode("utf-8-sig")), ensure_ascii=False, indent=2)
+                content = json.dumps(
+                    json.loads(payload.decode("utf-8-sig")), ensure_ascii=False, indent=2
+                )
             elif extension == ".pdf":
                 content, pages = self._parse_pdf(payload)
                 metadata["page_count"] = pages
@@ -77,6 +84,10 @@ class DocumentIngestionService:
             raise DocumentParseError(f"could not parse '{filename}': {exc}") from exc
         if not content.strip():
             raise DocumentParseError(f"'{filename}' contains no extractable text")
+        if len(content) > self.max_extracted_characters:
+            raise DocumentParseError(
+                f"'{filename}' exceeds the {self.max_extracted_characters} character extraction limit"
+            )
         metadata["character_count"] = len(content)
         return ParsedDocument(title=title, content=content.strip(), metadata=metadata)
 
@@ -84,7 +95,9 @@ class DocumentIngestionService:
     def _parse_delimited(payload: bytes, delimiter: str) -> tuple[str, int]:
         text = payload.decode("utf-8-sig")
         rows = list(csv.reader(StringIO(text), delimiter=delimiter))
-        return "\n".join(" | ".join(cell.strip() for cell in row) for row in rows if any(row)), len(rows)
+        return "\n".join(" | ".join(cell.strip() for cell in row) for row in rows if any(row)), len(
+            rows
+        )
 
     @staticmethod
     def _parse_pdf(payload: bytes) -> tuple[str, int]:
@@ -92,14 +105,18 @@ class DocumentIngestionService:
 
         reader = PdfReader(BytesIO(payload))
         pages = [page.extract_text() or "" for page in reader.pages]
-        return "\n\n".join(f"[第 {index} 页]\n{text}" for index, text in enumerate(pages, 1) if text.strip()), len(pages)
+        return "\n\n".join(
+            f"[第 {index} 页]\n{text}" for index, text in enumerate(pages, 1) if text.strip()
+        ), len(pages)
 
     @staticmethod
     def _parse_docx(payload: bytes) -> tuple[str, int, int]:
         from docx import Document
 
         document = Document(BytesIO(payload))
-        parts = [paragraph.text.strip() for paragraph in document.paragraphs if paragraph.text.strip()]
+        parts = [
+            paragraph.text.strip() for paragraph in document.paragraphs if paragraph.text.strip()
+        ]
         for table_index, table in enumerate(document.tables, 1):
             rows = [" | ".join(cell.text.strip() for cell in row.cells) for row in table.rows]
             if rows:
@@ -113,7 +130,11 @@ class DocumentIngestionService:
         presentation = Presentation(BytesIO(payload))
         slides: list[str] = []
         for slide_index, slide in enumerate(presentation.slides, 1):
-            texts = [shape.text.strip() for shape in slide.shapes if hasattr(shape, "text") and shape.text.strip()]
+            texts = [
+                shape.text.strip()
+                for shape in slide.shapes
+                if hasattr(shape, "text") and shape.text.strip()
+            ]
             if texts:
                 slides.append(f"[第 {slide_index} 页]\n" + "\n".join(texts))
         return "\n\n".join(slides), len(presentation.slides)
@@ -125,7 +146,8 @@ class DocumentIngestionService:
 
             workbook = xlrd.open_workbook(file_contents=payload)
             sheets = [
-                f"## {sheet.name}\n" + "\n".join(
+                f"## {sheet.name}\n"
+                + "\n".join(
                     " | ".join(str(value).strip() for value in sheet.row_values(row_index))
                     for row_index in range(sheet.nrows)
                 )

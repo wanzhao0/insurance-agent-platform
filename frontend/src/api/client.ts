@@ -1,13 +1,21 @@
 import axios from 'axios'
 import type {
   Document,
+  AuditLog,
+  ConfigVersion,
+  DomainPlugin,
+  EvaluationRun,
+  HandoffTicket,
   EvaluationReport,
   KnowledgeBase,
   Overview,
   RuntimeConfig,
   SearchResult,
   Tenant,
+  TaskJob,
+  User,
   UserContext,
+  WorkflowRun,
 } from '@/types'
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || '/api/v1'
@@ -83,6 +91,42 @@ export const api = {
   },
   async evaluate(judge: 'rules' | 'llm' = 'rules') {
     return (await http.post<EvaluationReport>('/admin/evaluations/run', { judge })).data
+  },
+  async evaluationRuns() {
+    return (await http.get<EvaluationRun[]>('/admin/evaluations')).data
+  },
+  async users() {
+    return (await http.get<User[]>('/admin/users')).data
+  },
+  async createUser(payload: Record<string, unknown>) {
+    return (await http.post<User>('/admin/users', payload)).data
+  },
+  async updateUser(id: string, payload: Record<string, unknown>) {
+    return (await http.patch<User>(`/admin/users/${encodeURIComponent(id)}`, payload)).data
+  },
+  async configVersions() {
+    return (await http.get<ConfigVersion[]>('/admin/config-versions')).data
+  },
+  async publishConfig(id: string) {
+    return (await http.post<ConfigVersion>(`/admin/config-versions/${encodeURIComponent(id)}/publish`)).data
+  },
+  async tasks() {
+    return (await http.get<TaskJob[]>('/admin/tasks')).data
+  },
+  async workflowRuns() {
+    return (await http.get<WorkflowRun[]>('/admin/workflow-runs')).data
+  },
+  async auditLogs() {
+    return (await http.get<AuditLog[]>('/admin/audit-logs')).data
+  },
+  async handoffs() {
+    return (await http.get<HandoffTicket[]>('/admin/handoffs')).data
+  },
+  async updateHandoff(id: string, status: HandoffTicket['status']) {
+    return (await http.patch<HandoffTicket>(`/admin/handoffs/${encodeURIComponent(id)}`, { status })).data
+  },
+  async plugins() {
+    return (await http.get<DomainPlugin[]>('/admin/plugins')).data
   },
   async search(kbId: string, query: string) {
     return (await http.post<{ results: SearchResult[] }>(`/knowledge-bases/${kbId}/search`, { query })).data.results

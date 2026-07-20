@@ -1,5 +1,6 @@
 from collections.abc import AsyncIterator
 from dataclasses import dataclass
+import asyncio
 
 from app.application.agent.registry import ToolRegistry
 from app.application.agent.orchestrator import AgentOrchestrator
@@ -9,13 +10,8 @@ from app.core.config import Settings
 from app.core.logging import get_logger
 from app.domain.models import ChatMessage, ChatRequest, SearchResult, StreamEvent
 from app.domain.ports import ModelClient
-
-
-SYSTEM_PROMPT = (
-    "你是一个可配置的行业知识库客服 Agent。请优先依据提供的知识库上下文回答，"
-    "回答前必须调用 search_knowledge_base 获取当前租户知识库证据；"
-    "不要编造保单条款、金额、承保结论或法律意见。无法确认时明确说明并建议转人工。"
-)
+from app.plugins.base import DomainPlugin
+from app.application.workflow.engine import WorkflowExecutionError
 
 
 @dataclass
@@ -36,15 +32,23 @@ class ChatService:
         knowledge_base_service: KnowledgeBaseService,
         rag_service: RagService,
         tool_registry: ToolRegistry,
+        domain_plugin: DomainPlugin,
         conversation_repository=None,
+        workflow_repository=None,
     ) -> None:
         self.settings = settings
         self.model_client = model_client
         self.knowledge_base_service = knowledge_base_service
         self.rag_service = rag_service
         self.tool_registry = tool_registry
+        self.domain_plugin = domain_plugin
         self.conversation_repository = conversation_repository
-        self.agent_orchestrator = AgentOrchestrator(lambda: self.model_client, tool_registry)
+        self.workflow_repository = workflow_repository
+        self.agent_orchestrator = AgentOrchestrator(
+            lambda: self.model_client,
+            tool_registry,
+            domain_plugin.workflow,
+        )
         self.logger = get_logger(__name__)
 
     async def startup(self) -> None:
@@ -61,6 +65,15 @@ class ChatService:
     def replace_model_client(self, model_client: ModelClient) -> None:
         self.model_client = model_client
 
+    def replace_domain_plugin(self, domain_plugin: DomainPlugin) -> None:
+        orchestrator = AgentOrchestrator(
+            lambda: self.model_client,
+            self.tool_registry,
+            domain_plugin.workflow,
+        )
+        self.domain_plugin = domain_plugin
+        self.agent_orchestrator = orchestrator
+
     def prepare(self, request: ChatRequest, *, persist_conversation: bool = True) -> ChatContext:
         knowledge_base_id = self.knowledge_base_service.resolve_knowledge_base(
             request.tenant_id, request.knowledge_base_id
@@ -70,30 +83,60 @@ class ChatService:
             conversation_id=request.conversation_id,
             knowledge_base_id=knowledge_base_id,
             retrieved=[],
-            prompt_messages=[ChatMessage(role="system", content=SYSTEM_PROMPT), *request.messages],
+            prompt_messages=[
+                ChatMessage(role="system", content=self.domain_plugin.system_prompt),
+                *request.messages,
+            ],
             persist_conversation=persist_conversation,
         )
 
     async def stream(self, context: ChatContext) -> AsyncIterator[StreamEvent]:
-        state = await self.agent_orchestrator.run(context)
+        try:
+            state = await self.agent_orchestrator.run(context)
+        except WorkflowExecutionError as exc:
+            if self.workflow_repository is not None and context.persist_conversation:
+                await asyncio.to_thread(
+                    self.workflow_repository.record,
+                    context.conversation_id,
+                    context.request.tenant_id,
+                    self.domain_plugin.workflow_version,
+                    "failed",
+                    [trace.model_dump(mode="json") for trace in exc.state.traces],
+                )
+            raise exc.cause from exc
         if self.conversation_repository is not None and context.persist_conversation:
             latest_user = next(
-                (message.content for message in reversed(context.request.messages) if message.role == "user"),
+                (
+                    message.content
+                    for message in reversed(context.request.messages)
+                    if message.role == "user"
+                ),
                 None,
             )
-            self.conversation_repository.save_turn(
+            await asyncio.to_thread(
+                self.conversation_repository.save_turn,
                 context.conversation_id,
                 context.request.tenant_id,
                 context.knowledge_base_id,
                 "user",
                 latest_user,
             )
-            self.conversation_repository.save_turn(
+            await asyncio.to_thread(
+                self.conversation_repository.save_turn,
                 context.conversation_id,
                 context.request.tenant_id,
                 context.knowledge_base_id,
                 "assistant",
                 state.answer,
+            )
+        if self.workflow_repository is not None and context.persist_conversation:
+            await asyncio.to_thread(
+                self.workflow_repository.record,
+                context.conversation_id,
+                context.request.tenant_id,
+                self.domain_plugin.workflow_version,
+                "succeeded",
+                [trace.model_dump(mode="json") for trace in state.traces],
             )
         for call in state.tool_calls:
             yield StreamEvent(event="tool_call", tool_name=call.name, tool_call_id=call.call_id)

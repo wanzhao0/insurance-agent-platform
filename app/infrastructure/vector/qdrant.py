@@ -62,7 +62,9 @@ class QdrantVectorStore:
     def _point_id(knowledge_base_id: str, document_id: str) -> str:
         return str(uuid5(NAMESPACE_URL, f"{knowledge_base_id}:{document_id}"))
 
-    async def upsert(self, knowledge_base_id: str, document: DocumentResponse, vector: list[float]) -> None:
+    async def upsert(
+        self, knowledge_base_id: str, document: DocumentResponse, vector: list[float]
+    ) -> None:
         await asyncio.to_thread(
             self.client.upsert,
             collection_name=self.collection_name,
@@ -72,7 +74,9 @@ class QdrantVectorStore:
                     vector=vector,
                     payload={
                         "knowledge_base_id": knowledge_base_id,
-                        "document_id": document.metadata.get("source_document_id", document.document_id),
+                        "document_id": document.metadata.get(
+                            "source_document_id", document.document_id
+                        ),
                         "chunk_id": document.document_id,
                         "title": document.title,
                         "content": document.content,
@@ -82,9 +86,13 @@ class QdrantVectorStore:
             ],
         )
 
-    async def search(self, knowledge_base_id: str, vector: list[float], top_k: int) -> list[SearchResult]:
+    async def search(
+        self, knowledge_base_id: str, vector: list[float], top_k: int
+    ) -> list[SearchResult]:
         query_filter = Filter(
-            must=[FieldCondition(key="knowledge_base_id", match=MatchValue(value=knowledge_base_id))]
+            must=[
+                FieldCondition(key="knowledge_base_id", match=MatchValue(value=knowledge_base_id))
+            ]
         )
         points = await asyncio.to_thread(self._query, vector, query_filter, top_k)
         results: list[SearchResult] = []

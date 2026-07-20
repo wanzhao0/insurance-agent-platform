@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, Request
 
 from fastapi import HTTPException, status
@@ -22,7 +24,10 @@ async def tenant_config(
     user: UserContext = Depends(get_current_user),
 ) -> TenantConfigResponse:
     assert_tenant_access(user, tenant_id)
-    config = request.app.state.container.knowledge_base_service.tenant_config(tenant_id)
+    config = await asyncio.to_thread(
+        request.app.state.container.knowledge_base_service.tenant_config,
+        tenant_id,
+    )
     if config is None:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="tenant not found")
     return config

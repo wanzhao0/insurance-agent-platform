@@ -18,4 +18,7 @@ class ToolRegistry:
         return [self._tools[name].descriptor for name in self.names()]
 
     async def invoke(self, name: str, arguments: dict[str, Any]) -> Any:
-        return await self._tools[name].invoke(arguments)
+        tool = self._tools.get(name)
+        if tool is None:
+            raise ValueError(f"tool is not registered: {name}")
+        return await tool.invoke(arguments)

@@ -6,3 +6,6 @@ class InlineTaskQueue:
 
     async def enqueue(self, task_name: str, payload: dict) -> str:
         return f"inline-{task_name}-{uuid4()}"
+
+    async def close(self) -> None:
+        return None

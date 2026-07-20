@@ -19,7 +19,10 @@ def register_exception_handlers(app: FastAPI) -> None:
     async def handle_agent_error(_: Request, exc: AgentError) -> JSONResponse:
         return JSONResponse(
             status_code=exc.status_code,
-            content={"error": {"code": exc.code, "message": exc.message}, "request_id": get_request_id()},
+            content={
+                "error": {"code": exc.code, "message": exc.message},
+                "request_id": get_request_id(),
+            },
         )
 
     @app.exception_handler(RequestValidationError)
@@ -38,7 +41,9 @@ def register_exception_handlers(app: FastAPI) -> None:
 
     @app.exception_handler(Exception)
     async def handle_unexpected_error(_: Request, exc: Exception) -> JSONResponse:
-        get_logger("app.errors").exception("unexpected_error", extra={"request_id": get_request_id()})
+        get_logger("app.errors").exception(
+            "unexpected_error", extra={"request_id": get_request_id()}
+        )
         return JSONResponse(
             status_code=500,
             content={

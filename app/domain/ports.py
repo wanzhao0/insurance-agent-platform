@@ -20,7 +20,9 @@ class ModelClient(Protocol):
         tools: list[ToolDescriptor] | None = None,
     ) -> ModelCompletion: ...
 
-    async def stream(self, messages: list[ChatMessage], *, temperature: float = 0.2) -> AsyncIterator[str]: ...
+    async def stream(
+        self, messages: list[ChatMessage], *, temperature: float = 0.2
+    ) -> AsyncIterator[str]: ...
 
     async def healthcheck(self) -> None: ...
 
@@ -34,13 +36,21 @@ class DocumentRepository(Protocol):
 
     def delete(self, knowledge_base_id: str, document_id: str) -> bool: ...
 
+    def update_lifecycle(
+        self, knowledge_base_id: str, document_id: str, values: dict[str, Any]
+    ) -> DocumentResponse | None: ...
+
 
 class VectorStore(Protocol):
     async def reset(self) -> None: ...
 
-    async def upsert(self, knowledge_base_id: str, document: DocumentResponse, vector: list[float]) -> None: ...
+    async def upsert(
+        self, knowledge_base_id: str, document: DocumentResponse, vector: list[float]
+    ) -> None: ...
 
-    async def search(self, knowledge_base_id: str, vector: list[float], top_k: int) -> list[SearchResult]: ...
+    async def search(
+        self, knowledge_base_id: str, vector: list[float], top_k: int
+    ) -> list[SearchResult]: ...
 
     async def delete(self, knowledge_base_id: str, document_id: str) -> None: ...
 
@@ -57,3 +67,16 @@ class RateLimiter(Protocol):
 
 class TaskQueue(Protocol):
     async def enqueue(self, task_name: str, payload: dict[str, Any]) -> str: ...
+
+
+class ObjectStore(Protocol):
+    async def put(
+        self,
+        tenant_id: str,
+        knowledge_base_id: str,
+        document_id: str,
+        filename: str,
+        payload: bytes,
+    ) -> str: ...
+
+    async def delete(self, uri: str) -> None: ...

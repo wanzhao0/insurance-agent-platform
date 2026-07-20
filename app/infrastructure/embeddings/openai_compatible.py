@@ -16,7 +16,9 @@ class OpenAICompatibleEmbeddingClient:
 
     def _headers(self) -> dict[str, str]:
         if self.settings.embedding_api_key is None:
-            raise RuntimeError("AGENT_EMBEDDING_API_KEY is required for the configured embedding provider")
+            raise RuntimeError(
+                "AGENT_EMBEDDING_API_KEY is required for the configured embedding provider"
+            )
         return {"Authorization": f"Bearer {self.settings.embedding_api_key.get_secret_value()}"}
 
     async def embed(self, text: str) -> list[float]:

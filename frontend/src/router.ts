@@ -8,6 +8,7 @@ import DocumentsView from '@/views/DocumentsView.vue'
 import TenantsView from '@/views/TenantsView.vue'
 import RuntimeView from '@/views/RuntimeView.vue'
 import EvaluationsView from '@/views/EvaluationsView.vue'
+import GovernanceView from '@/views/GovernanceView.vue'
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -24,6 +25,7 @@ export const router = createRouter({
         { path: 'tenants', component: TenantsView },
         { path: 'runtime', component: RuntimeView },
         { path: 'evaluations', component: EvaluationsView },
+        { path: 'governance', component: GovernanceView },
       ],
     },
   ],
